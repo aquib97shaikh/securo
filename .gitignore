@@ -13,6 +13,7 @@ docker-compose.override.yml
 
 # Ignore local configuration files
 .vscode/
+.cursor/
 
 # Runtime artifacts written by the agents feature (uploaded KB files,
 # downloaded ONNX embedding models, transaction attachments). User data
