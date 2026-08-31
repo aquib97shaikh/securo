@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { ShieldCheck } from 'lucide-react'
@@ -36,6 +36,12 @@ export function BackupDialog({ open, onClose }: BackupDialogProps) {
   const [confirmPassword, setConfirmPassword] = useState('')
   const [downloading, setDownloading] = useState(false)
   const [error, setError] = useState('')
+  const [driveConnected, setDriveConnected] = useState(false)
+
+  useEffect(() => {
+    if (!open) return
+    backupApi.driveStatus().then((s) => setDriveConnected(s.connected)).catch(() => setDriveConnected(false))
+  }, [open])
 
   const handleClose = () => {
     setPassword('')
@@ -74,7 +80,10 @@ export function BackupDialog({ open, onClose }: BackupDialogProps) {
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>{t('backup.dialogTitle')}</DialogTitle>
-          <DialogDescription>{t('backup.dialogDescription')}</DialogDescription>
+          <DialogDescription>
+            {t('backup.dialogDescription')}
+            {driveConnected ? ` ${t('backup.driveNote')}` : ''}
+          </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">

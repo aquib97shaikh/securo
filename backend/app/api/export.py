@@ -19,8 +19,11 @@ from app.models.import_log import ImportLog
 from app.models.recurring_transaction import RecurringTransaction
 from app.models.rule import Rule
 from app.models.transaction import Transaction
+from app.models.drive_backup import DriveBackupConfig
+from app.models.workspace import Workspace
 from app.schemas.export import BackupRequest
 from app.services.backup_service import build_backup_archive
+from app.services.drive_backup_service import is_connected, maybe_upload_workspace
 
 router = APIRouter(prefix="/api/export", tags=["export"])
 
@@ -40,9 +43,9 @@ def _serialize(obj) -> dict:
     return d
 
 
-async def _collect(ctx: WorkspaceContext, session: AsyncSession) -> dict[str, object]:
+async def _collect(workspace: Workspace, session: AsyncSession) -> dict[str, object]:
     """Every entity in the workspace, keyed by the file it becomes."""
-    ws_id = ctx.workspace.id
+    ws_id = workspace.id
 
     accounts = (await session.execute(select(Account).where(Account.workspace_id == ws_id))).scalars().all()
     transactions = (await session.execute(select(Transaction).where(Transaction.workspace_id == ws_id))).scalars().all()
@@ -84,7 +87,7 @@ async def _collect(ctx: WorkspaceContext, session: AsyncSession) -> dict[str, ob
         "export_date": datetime.now(timezone.utc).isoformat(),
         "format_version": "1.0",
         "workspace_id": str(ws_id),
-        "workspace_name": ctx.workspace.name,
+        "workspace_name": workspace.name,
         "entity_counts": entity_counts,
     }
     return files
@@ -99,6 +102,16 @@ def _as_download(archive: bytes) -> StreamingResponse:
     )
 
 
+@router.get("/drive-status")
+async def drive_status(
+    _ctx: WorkspaceContext = Depends(current_workspace),
+    session: AsyncSession = Depends(get_async_session),
+):
+    """Whether instance Drive backup is connected — used to label the download dialog."""
+    config = await session.get(DriveBackupConfig, 1)
+    return {"connected": bool(config and is_connected(config))}
+
+
 @router.get("/backup")
 async def backup(
     ctx: WorkspaceContext = Depends(current_workspace),
@@ -110,7 +123,9 @@ async def backup(
     workspaces back each one up separately. AssetValue inherits its
     workspace from its Asset and is filtered transitively.
     """
-    return _as_download(build_backup_archive(await _collect(ctx, session)))
+    files = await _collect(ctx.workspace, session)
+    await maybe_upload_workspace(session, ctx.workspace, files)
+    return _as_download(build_backup_archive(files))
 
 
 @router.post("/backup")
@@ -126,4 +141,6 @@ async def backup_protected(
     the password and cannot recover the archive without it.
     """
     password = body.password.get_secret_value() if body.password else None
-    return _as_download(build_backup_archive(await _collect(ctx, session), password))
+    files = await _collect(ctx.workspace, session)
+    await maybe_upload_workspace(session, ctx.workspace, files)
+    return _as_download(build_backup_archive(files, password))
