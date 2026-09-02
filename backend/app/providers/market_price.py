@@ -72,8 +72,14 @@ class MarketPriceProvider(ABC):
         """Return ticker suggestions matching the user's query."""
 
     @abstractmethod
-    async def get_quote(self, symbol: str) -> Optional[MarketSymbolQuote]:
-        """Return the latest price for a single symbol, or None if unknown."""
+    async def get_quote(
+        self, symbol: str, currency: Optional[str] = None
+    ) -> Optional[MarketSymbolQuote]:
+        """Return the latest price for a single symbol, or None if unknown.
+
+        ``currency`` is a hint for providers that quote in more than one
+        currency (physical gold/silver). Yahoo ignores it.
+        """
 
     async def get_quotes(self, symbols: list[str]) -> dict[str, Optional[MarketSymbolQuote]]:
         """Batch variant — default is a sequential get_quote loop.
@@ -199,7 +205,9 @@ class YFinanceProvider(MarketPriceProvider):
             out.update(chunk_prices)
         return out
 
-    async def get_quote(self, symbol: str) -> Optional[MarketSymbolQuote]:
+    async def get_quote(
+        self, symbol: str, currency: Optional[str] = None
+    ) -> Optional[MarketSymbolQuote]:
         sym = (symbol or "").strip().upper()
         if not sym:
             return None
@@ -458,12 +466,31 @@ class CompositeMarketPriceProvider(MarketPriceProvider):
             tesouro = await self._search_tesouro(q, limit=limit)
             if tesouro:
                 return tesouro[:limit]
-        return await self.default_provider.search(q, limit=limit)
+        metal = await self._search_metal(q, limit=limit)
+        rest = await self.default_provider.search(q, limit=limit)
+        if not metal:
+            return rest
+        seen = {m.symbol.upper() for m in metal}
+        merged = list(metal)
+        for item in rest:
+            if (item.symbol or "").upper() in seen:
+                continue
+            merged.append(item)
+            if len(merged) >= limit:
+                break
+        return merged[:limit]
 
-    async def get_quote(self, symbol: str) -> Optional[MarketSymbolQuote]:
+    async def get_quote(
+        self, symbol: str, currency: Optional[str] = None
+    ) -> Optional[MarketSymbolQuote]:
         if _is_tesouro_symbol(symbol):
             return await self._tesouro_quote(symbol)
-        return await self.default_provider.get_quote(symbol)
+        if _is_goldpricez_symbol(symbol):
+            metal = _goldpricez_provider()
+            if metal is not None:
+                return await metal.get_quote(symbol, currency=currency)
+            return None
+        return await self.default_provider.get_quote(symbol, currency=currency)
 
     async def get_latest_prices(self, symbols: list[str]) -> dict[str, Optional[Decimal]]:
         out: dict[str, Optional[Decimal]] = {}
@@ -472,6 +499,10 @@ class CompositeMarketPriceProvider(MarketPriceProvider):
         for symbol in symbols:
             if _is_tesouro_symbol(symbol):
                 tesouro.append(symbol)
+            elif _is_goldpricez_symbol(symbol):
+                # Per-holding currency; skip the Yahoo batch so refresh_all
+                # falls back to get_quote(..., currency=asset.currency).
+                continue
             else:
                 regular.append(symbol)
         if regular:
@@ -479,6 +510,9 @@ class CompositeMarketPriceProvider(MarketPriceProvider):
         if tesouro:
             out.update(await self._tesouro_latest_prices(tesouro))
         return out
+
+    async def _search_metal(self, query: str, limit: int) -> list[MarketSymbolMatch]:
+        return await _search_metal_impl(query, limit)
 
     async def _search_tesouro(self, query: str, limit: int) -> list[MarketSymbolMatch]:
         from app.providers.tesouro_direto import (
@@ -547,6 +581,39 @@ _TESOURO_KEYWORDS = ("tesouro", "selic", "ipca", "prefixado", "igpm", "educa", "
 def _looks_like_tesouro_query(query: str) -> bool:
     normalized = query.strip().casefold()
     return any(keyword in normalized for keyword in _TESOURO_KEYWORDS)
+
+def _is_goldpricez_symbol(symbol: str | None) -> bool:
+    try:
+        from app.providers.goldpricez import is_goldpricez_symbol
+
+        return is_goldpricez_symbol(symbol)
+    except Exception:
+        return False
+
+
+def _goldpricez_provider():
+    try:
+        from app.providers.goldpricez import get_goldpricez_provider
+
+        return get_goldpricez_provider()
+    except Exception:
+        return None
+
+
+def _looks_like_metal_query(query: str) -> bool:
+    normalized = query.strip().casefold()
+    return any(
+        token in normalized
+        for token in ("gold", "silver", "xau", "xag", "metal", "jewellery", "jewelry")
+    )
+
+
+async def _search_metal_impl(query: str, limit: int) -> list[MarketSymbolMatch]:
+    provider = _goldpricez_provider()
+    if provider is None or not _looks_like_metal_query(query):
+        return []
+    return await provider.search(query, limit=limit)
+
 
 def _is_tesouro_symbol(symbol: str | None) -> bool:
     try:

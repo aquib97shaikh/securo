@@ -27,7 +27,7 @@ class FakeMarketProvider(MarketPriceProvider):
     async def search(self, query: str, limit: int = 20) -> list[MarketSymbolMatch]:
         return []
 
-    async def get_quote(self, symbol: str) -> Optional[MarketSymbolQuote]:
+    async def get_quote(self, symbol: str, currency: Optional[str] = None) -> Optional[MarketSymbolQuote]:
         return self.quotes.get(symbol.upper())
 
     async def get_latest_prices(self, symbols: list[str]) -> dict[str, Optional[Decimal]]:

@@ -596,6 +596,7 @@ export default function AccountsPage() {
         onClose={() => setSelectedProvider(null)}
         provider={selectedProvider?.name ?? ''}
         supportsAssetSync={selectedProvider?.supports_asset_sync ?? false}
+        requiresInstitutionSelect={selectedProvider?.requires_institution_select ?? true}
       />
 
       {/* Token Connect Dialog — paste-a-token flow (SimpleFIN) */}

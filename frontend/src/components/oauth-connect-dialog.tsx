@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { connections } from '@/lib/api'
+import { OAUTH_RETURN_TO_KEY } from '@/lib/use-connection-reconnect'
 import {
   Dialog,
   DialogContent,
@@ -24,6 +25,10 @@ interface OAuthConnectDialogProps {
   onClose: () => void
   provider: string
   supportsAssetSync?: boolean
+  /** Enable Banking and similar providers need country + bank pickers first. */
+  requiresInstitutionSelect?: boolean
+  /** Where to send the user after OAuth callback (e.g. /assets). */
+  returnTo?: string
 }
 
 const LAST_COUNTRY_KEY = 'securo:lastOAuthCountry'
@@ -41,9 +46,16 @@ function countryLabel(code: string): string {
   return REGION_NAMES.of(code) || code
 }
 
-export function OAuthConnectDialog({ open, onClose, provider, supportsAssetSync = false }: OAuthConnectDialogProps) {
+export function OAuthConnectDialog({
+  open,
+  onClose,
+  provider,
+  supportsAssetSync = false,
+  requiresInstitutionSelect = true,
+  returnTo,
+}: OAuthConnectDialogProps) {
   const { t } = useTranslation()
-  const [step, setStep] = useState<'country' | 'bank'>('country')
+  const [step, setStep] = useState<'country' | 'bank' | 'direct'>('country')
   const [country, setCountry] = useState<string | null>(null)
   const [countries, setCountries] = useState<string[]>([])
   const [institutions, setInstitutions] = useState<Institution[]>([])
@@ -52,15 +64,22 @@ export function OAuthConnectDialog({ open, onClose, provider, supportsAssetSync 
   const [redirecting, setRedirecting] = useState(false)
   const [syncAssets, setSyncAssets] = useState(true)
 
+  const directConnect = !requiresInstitutionSelect
+
   // Reset when dialog opens.
   useEffect(() => {
     if (!open) return
-    setStep('country')
-    setCountry(null)
-    setInstitutions([])
     setError(null)
     setRedirecting(false)
     setSyncAssets(true)
+    if (directConnect) {
+      setStep('direct')
+      setLoading(false)
+      return
+    }
+    setStep('country')
+    setCountry(null)
+    setInstitutions([])
     setLoading(true)
     connections
       .listInstitutions(provider)
@@ -74,11 +93,11 @@ export function OAuthConnectDialog({ open, onClose, provider, supportsAssetSync 
       })
       .catch(() => setError(t('accounts.loadingInstitutionsError')))
       .finally(() => setLoading(false))
-  }, [open, provider, t])
+  }, [open, provider, directConnect, t])
 
   // Load banks when a country is picked.
   useEffect(() => {
-    if (!open || !country || step !== 'bank') return
+    if (!open || directConnect || !country || step !== 'bank') return
     setLoading(true)
     setError(null)
     connections
@@ -86,7 +105,7 @@ export function OAuthConnectDialog({ open, onClose, provider, supportsAssetSync 
       .then((data) => setInstitutions(data.institutions))
       .catch(() => setError(t('accounts.loadingInstitutionsError')))
       .finally(() => setLoading(false))
-  }, [open, provider, country, step, t])
+  }, [open, provider, country, step, directConnect, t])
 
   const sortedCountries = useMemo(
     () =>
@@ -102,23 +121,57 @@ export function OAuthConnectDialog({ open, onClose, provider, supportsAssetSync 
     setStep('bank')
   }
 
-  const handleBankSelect = async (institution: Institution) => {
-    if (!country) return
+  const startOAuthRedirect = async (flowParams: Record<string, unknown>) => {
     setRedirecting(true)
+    if (returnTo) {
+      sessionStorage.setItem(OAUTH_RETURN_TO_KEY, returnTo)
+    }
     try {
-      const url = await connections.getOAuthUrl(provider, {
-        country,
-        institution_name: institution.name,
-        valid_until_days: institution.max_consent_days,
-        ...(supportsAssetSync ? { sync_assets: syncAssets } : {}),
-      })
+      const url = await connections.getOAuthUrl(provider, flowParams)
       window.location.assign(url)
     } catch (e) {
       setRedirecting(false)
+      if (returnTo) {
+        sessionStorage.removeItem(OAUTH_RETURN_TO_KEY)
+      }
       const message = e instanceof Error ? e.message : String(e)
       toast.error(message || t('accounts.connectError'))
     }
   }
+
+  const handleDirectConnect = async () => {
+    await startOAuthRedirect(
+      supportsAssetSync ? { sync_assets: syncAssets } : {},
+    )
+  }
+
+  const handleBankSelect = async (institution: Institution) => {
+    if (!country) return
+    await startOAuthRedirect({
+      country,
+      institution_name: institution.name,
+      valid_until_days: institution.max_consent_days,
+      ...(supportsAssetSync ? { sync_assets: syncAssets } : {}),
+    })
+  }
+
+  const dialogTitle =
+    step === 'direct'
+      ? t(`accounts.providers.${provider}.connectTitle`, {
+          defaultValue: t('accounts.connectProvider'),
+        })
+      : step === 'country'
+        ? t('accounts.selectCountry')
+        : t('accounts.selectBank')
+
+  const dialogDescription =
+    step === 'direct'
+      ? t(`accounts.providers.${provider}.connectDesc`, {
+          defaultValue: t('accounts.connectProviderDesc'),
+        })
+      : step === 'country'
+        ? t('accounts.selectCountryDesc')
+        : t('accounts.selectBankDesc')
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && !redirecting && onClose()}>
@@ -134,13 +187,9 @@ export function OAuthConnectDialog({ open, onClose, provider, supportsAssetSync 
                 <ChevronLeft size={18} />
               </button>
             )}
-            {step === 'country' ? t('accounts.selectCountry') : t('accounts.selectBank')}
+            {dialogTitle}
           </DialogTitle>
-          <p className="text-sm text-muted-foreground">
-            {step === 'country'
-              ? t('accounts.selectCountryDesc')
-              : t('accounts.selectBankDesc')}
-          </p>
+          <p className="text-sm text-muted-foreground">{dialogDescription}</p>
         </DialogHeader>
 
         {!redirecting && supportsAssetSync && (
@@ -172,6 +221,22 @@ export function OAuthConnectDialog({ open, onClose, provider, supportsAssetSync 
           </div>
         ) : error ? (
           <div className="py-8 text-center text-sm text-destructive">{error}</div>
+        ) : step === 'direct' ? (
+          <div className="pt-2 space-y-4">
+            <div className="flex items-start gap-3 rounded-lg border border-border p-4">
+              <div className="w-9 h-9 rounded-lg bg-muted flex items-center justify-center shrink-0">
+                <Building2 size={16} className="text-muted-foreground" />
+              </div>
+              <p className="text-sm text-muted-foreground">
+                {t(`accounts.providers.${provider}.description`, {
+                  defaultValue: t('accounts.connectProviderDesc'),
+                })}
+              </p>
+            </div>
+            <Button className="w-full" onClick={handleDirectConnect}>
+              {t('accounts.continueToLogin')}
+            </Button>
+          </div>
         ) : step === 'country' ? (
           <div className="space-y-1 pt-2 max-h-[60vh] overflow-y-auto">
             {sortedCountries.length === 0 ? (

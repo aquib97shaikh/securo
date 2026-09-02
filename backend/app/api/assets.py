@@ -2,6 +2,7 @@ import json
 import logging
 import uuid
 from decimal import Decimal
+from typing import Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 from fastapi.responses import Response
@@ -85,12 +86,13 @@ async def market_search(
 @router.get("/market/quote", response_model=MarketSymbolQuote)
 async def market_quote(
     symbol: str = Query(..., min_length=1, max_length=32),
+    currency: Optional[str] = Query(None, min_length=3, max_length=3),
     _: User = Depends(current_active_user),
 ) -> MarketSymbolQuote:
     """Fetch a single live quote — used to preview value before saving an asset."""
     provider = get_market_price_provider()
     try:
-        quote = await provider.get_quote(symbol)
+        quote = await provider.get_quote(symbol, currency=currency)
     except MarketPriceRateLimitedError:
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,

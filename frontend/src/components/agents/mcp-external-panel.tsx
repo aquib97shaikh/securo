@@ -6,9 +6,9 @@ import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { agents } from '@/lib/api'
+import { clientConfigFor, type McpClientId } from '@/lib/mcp-client-config'
 
 type Snippet = { label: string; value: string }
-type ClientId = 'claude' | 'openai'
 
 function CopyButton({ value }: { value: string }) {
   const { t } = useTranslation()
@@ -44,45 +44,11 @@ function CodeBlock({ value }: { value: string }) {
   )
 }
 
-// Builds the per-client integration snippet. Kept as a function so the
-// shapes stay co-located with their labels and easy to extend.
-function clientConfigFor(client: ClientId, url: string, token: string): string {
-  if (client === 'claude') {
-    // Works for Claude Desktop, Claude Code (.mcp.json), and Cursor.
-    return JSON.stringify(
-      {
-        mcpServers: {
-          securo: {
-            url,
-            headers: { Authorization: `Bearer ${token}` },
-          },
-        },
-      },
-      null,
-      2,
-    )
-  }
-  // OpenAI Responses API tool spec — paste into the `tools` array of
-  // your API call. ChatGPT.com itself adds MCP via the Connectors UI,
-  // not a JSON paste.
-  return JSON.stringify(
-    {
-      type: 'mcp',
-      server_label: 'securo',
-      server_url: url,
-      headers: { Authorization: `Bearer ${token}` },
-      require_approval: 'never',
-    },
-    null,
-    2,
-  )
-}
-
 export function McpExternalPanel() {
   const { t } = useTranslation()
   const { data: info } = useQuery({ queryKey: ['agents-info'], queryFn: () => agents.info() })
   const [result, setResult] = useState<{ token: string; expiresInDays: number } | null>(null)
-  const [client, setClient] = useState<ClientId>('claude')
+  const [client, setClient] = useState<McpClientId>('claude-desktop')
 
   const mintMut = useMutation({
     mutationFn: () => agents.mcpTokens.create(),
@@ -114,8 +80,9 @@ export function McpExternalPanel() {
       ]
     : []
 
-  const clientTabs: { id: ClientId; label: string }[] = [
-    { id: 'claude', label: t('agents.mcpExternal.clients.claude', 'Claude Desktop / Code / Cursor') },
+  const clientTabs: { id: McpClientId; label: string }[] = [
+    { id: 'claude-desktop', label: t('agents.mcpExternal.clients.claudeDesktop', 'Claude Desktop') },
+    { id: 'cursor', label: t('agents.mcpExternal.clients.cursor', 'Cursor / Claude Code') },
     { id: 'openai', label: t('agents.mcpExternal.clients.openai', 'OpenAI Responses API') },
   ]
 
@@ -171,7 +138,7 @@ export function McpExternalPanel() {
               <div className="text-xs font-medium text-muted-foreground mb-1.5">
                 {t('agents.mcpExternal.snippets.clientConfig', 'Client integration')}
               </div>
-              <Tabs value={client} onValueChange={(v) => setClient(v as ClientId)}>
+              <Tabs value={client} onValueChange={(v) => setClient(v as McpClientId)}>
                 <TabsList className="h-8">
                   {clientTabs.map((tab) => (
                     <TabsTrigger key={tab.id} value={tab.id} className="text-xs px-2.5 py-1">
@@ -181,7 +148,19 @@ export function McpExternalPanel() {
                 </TabsList>
                 {clientTabs.map((tab) => (
                   <TabsContent key={tab.id} value={tab.id} className="mt-2">
-                    <CodeBlock value={clientConfigFor(tab.id, url, result.token)} />
+                    {tab.id === 'claude-desktop' && (
+                      <p className="text-xs text-muted-foreground mb-2">
+                        {t(
+                          'agents.mcpExternal.snippets.claudeDesktopHint',
+                          'Claude Desktop only accepts stdio servers. This uses npx mcp-remote as a local bridge. Fully quit Claude (system tray) and reopen after saving.',
+                        )}
+                      </p>
+                    )}
+                    <CodeBlock
+                      value={clientConfigFor(tab.id, url, result.token, {
+                        windows: /Windows/i.test(navigator.userAgent),
+                      })}
+                    />
                   </TabsContent>
                 ))}
               </Tabs>

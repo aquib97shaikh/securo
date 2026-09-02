@@ -10,7 +10,7 @@ import logging
 from typing import Any
 
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 
 from app.core.database import async_session_maker
 from mcp_server import tools as _tools_pkg  # noqa: F401  triggers tool registration
@@ -72,6 +72,15 @@ async def mcp(request: Request) -> JSONResponse:
 
     if body.get("jsonrpc") != "2.0" or not isinstance(method, str):
         return JSONResponse(status_code=400, content=_err(req_id, -32600, "invalid request"))
+
+    if method.startswith("notifications/"):
+        # JSON-RPC notifications have no id and must not receive an error
+        # body. External clients (mcp-remote / Claude Desktop) send
+        # notifications/initialized after the handshake.
+        return Response(status_code=204)
+
+    if method == "ping":
+        return JSONResponse(content=_ok(req_id, {}))
 
     if method == "initialize":
         return JSONResponse(

@@ -24,7 +24,7 @@ class Asset(Base):
         UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), index=True
     )
     name: Mapped[str] = mapped_column(String(255))
-    type: Mapped[str] = mapped_column(String(50))  # real_estate, vehicle, valuable, investment, other
+    type: Mapped[str] = mapped_column(String(50))  # stock, etf, crypto, gold, silver, fund, real_estate, vehicle, valuable, investment, other
     currency: Mapped[str] = mapped_column(String(3), default="USD")
     units: Mapped[Optional[Decimal]] = mapped_column(Numeric(precision=15, scale=6), nullable=True)
     valuation_method: Mapped[str] = mapped_column(String(20), default="manual")  # manual, growth_rule
@@ -84,6 +84,9 @@ class Asset(Base):
     # assets when a logo provider is configured. Null means "no logo, use
     # the type icon". Frontend swaps to the type icon on <img> load error.
     logo_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    # Gold purity in karats (24 = pure). Null for non-gold holdings and for
+    # gold added before this column existed (treated as 24K on quote).
+    karat: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
 
     values: Mapped[list["AssetValue"]] = relationship(back_populates="asset", cascade="all, delete-orphan")
     transactions: Mapped[list["AssetTransaction"]] = relationship(

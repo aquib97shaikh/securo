@@ -3,9 +3,12 @@ import { useTranslation } from 'react-i18next'
 import { useDisplayLocale, useDateLocale } from '@/hooks/use-display-locale'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useRegisterPageChatContext } from '@/lib/page-chat-context'
-import { assets, assetGroups, currencies as currenciesApi } from '@/lib/api'
+import { assets, assetGroups, currencies as currenciesApi, connections } from '@/lib/api'
 import { localDateString } from '@/lib/date-utils'
+import { invalidateFinancialQueries } from '@/lib/invalidate-queries'
+import { connectionNeedsReconnect, useOAuthReconnect } from '@/lib/use-connection-reconnect'
 import { toast } from 'sonner'
+import axios from 'axios'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -19,7 +22,7 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { DatePickerInput } from '@/components/ui/date-picker-input'
-import type { Asset, AssetGroup, AssetTransaction, AssetValue, MarketSymbolMatch, MarketSymbolQuote } from '@/types'
+import type { Asset, AssetGroup, AssetTransaction, AssetValue, BankConnection, MarketSymbolMatch, MarketSymbolQuote } from '@/types'
 import {
   Home,
   Car,
@@ -41,6 +44,7 @@ import {
   PieChart,
   AlertTriangle,
   Upload,
+  Coins,
 } from 'lucide-react'
 import {
   AreaChart,
@@ -53,11 +57,25 @@ import {
 } from 'recharts'
 import { useNavigate } from 'react-router-dom'
 import { PageHeader } from '@/components/page-header'
+import { OAuthConnectDialog } from '@/components/oauth-connect-dialog'
 import { usePrivacyMode } from '@/hooks/use-privacy-mode'
 import { useAuth } from '@/contexts/auth-context'
 import { useWorkspace } from '@/contexts/workspace-context'
 import { useCollectionFilter } from '@/contexts/collection-filter-context'
-import { formatCurrency } from '@/lib/format'
+import { formatCompactNumber, formatCurrency } from '@/lib/format'
+import {
+  DEFAULT_GOLD_KARAT,
+  GOLD_KARATS,
+  defaultMetalTicker,
+  holdingUnitPrice,
+  isPhysicalMetalGramTicker,
+  isPhysicalMetalOzTicker,
+  isPhysicalMetalType,
+  locksQuoteCurrency,
+  resolvedPurchaseUnitPrice,
+  typeFromQuote,
+  type GoldKarat,
+} from '@/lib/asset-type'
 
 // Renders a logo image when one is available, falling back to the asset's
 // type-based Lucide icon on missing URL or broken image. Uses the type's
@@ -125,6 +143,8 @@ const ASSET_TYPE_CONFIG: Record<string, { icon: React.ElementType; color: string
   stock: { icon: LineChart, color: 'text-sky-600', bg: 'bg-sky-100' },
   etf: { icon: Layers, color: 'text-teal-600', bg: 'bg-teal-100' },
   crypto: { icon: Bitcoin, color: 'text-orange-600', bg: 'bg-orange-100' },
+  gold: { icon: Coins, color: 'text-amber-600', bg: 'bg-amber-100' },
+  silver: { icon: Coins, color: 'text-slate-600', bg: 'bg-slate-100' },
   fund: { icon: PieChart, color: 'text-indigo-600', bg: 'bg-indigo-100' },
   other: { icon: Package, color: 'text-slate-600', bg: 'bg-slate-100' },
 }
@@ -137,6 +157,8 @@ const ASSET_TYPES = [
   'stock',
   'etf',
   'crypto',
+  'gold',
+  'silver',
   'fund',
   'real_estate',
   'vehicle',
@@ -145,24 +167,6 @@ const ASSET_TYPES = [
   'other',
 ] as const
 
-// Map a yfinance `quoteType` to Securo's asset type. Lives here (not the
-// backend) so if we ever swap the market-price provider the service stays
-// clean — all provider-specific vocabulary is translated at the edge.
-function assetTypeFromQuoteType(quoteType: string | null | undefined): string {
-  switch ((quoteType || '').toUpperCase()) {
-    case 'EQUITY':
-      return 'stock'
-    case 'ETF':
-      return 'etf'
-    case 'CRYPTOCURRENCY':
-      return 'crypto'
-    case 'MUTUALFUND':
-    case 'INDEX':
-      return 'fund'
-    default:
-      return 'investment'
-  }
-}
 const VALUATION_METHODS = ['manual', 'growth_rule', 'market_price'] as const
 const GROWTH_TYPES = ['percentage', 'absolute'] as const
 const GROWTH_FREQUENCIES = ['daily', 'weekly', 'monthly', 'yearly'] as const
@@ -221,6 +225,7 @@ export default function AssetsPage() {
   const [collapsedWallets, setCollapsedWallets] = useState<Set<string>>(new Set())
   // Asset being moved to a wallet (null = no picker open)
   const [movingAsset, setMovingAsset] = useState<Asset | null>(null)
+  const [kiteConnectOpen, setKiteConnectOpen] = useState(false)
 
   // Form state
   const [formName, setFormName] = useState('')
@@ -251,6 +256,7 @@ export default function AssetsPage() {
   // model as the buy/sell ledger — no total-purchase-price for tickers, so
   // "Add asset" and "Add transaction" stay consistent.
   const [formUnitPrice, setFormUnitPrice] = useState('')
+  const [formKarat, setFormKarat] = useState<GoldKarat>(DEFAULT_GOLD_KARAT)
   const [quoteLoading, setQuoteLoading] = useState(false)
 
   const { data: rawAssetsList, isLoading } = useQuery({
@@ -401,6 +407,20 @@ export default function AssetsPage() {
     queryKey: ['asset-groups'],
     queryFn: () => assetGroups.list(),
   })
+
+  const { data: connectionsList } = useQuery({
+    queryKey: ['connections'],
+    queryFn: connections.list,
+  })
+
+  const { data: providersList } = useQuery({
+    queryKey: ['connections', 'providers'],
+    queryFn: connections.getProviders,
+    staleTime: 1000 * 60 * 10,
+  })
+
+  const { startOAuthReconnect } = useOAuthReconnect()
+
   const walletsList = useMemo(() => {
     if (!activeWalletIds) return rawWalletsList
     const allowed = new Set(activeWalletIds)
@@ -524,29 +544,68 @@ export default function AssetsPage() {
     return () => window.clearTimeout(handle)
   }, [formMethod, formTickerQuery, selectedQuote])
 
+  // Re-quote physical metal when the holding currency changes so the live
+  // gram price matches INR/USD/etc. instead of staying on the last fetch.
+  useEffect(() => {
+    if (editingAsset) return
+    if (formMethod !== 'market_price') return
+    const symbol = selectedQuote?.symbol
+    if (!symbol || !isPhysicalMetalGramTicker(symbol)) return
+    if (selectedQuote.currency === formCurrency) return
+    let cancelled = false
+    const handle = window.setTimeout(async () => {
+      try {
+        const quote = await assets.marketQuote(symbol, formCurrency)
+        if (cancelled) return
+        setSelectedQuote(quote)
+      } catch {
+        /* keep the previous quote */
+      }
+    }, 200)
+    return () => {
+      cancelled = true
+      window.clearTimeout(handle)
+    }
+  }, [formCurrency, editingAsset, formMethod, selectedQuote?.symbol, selectedQuote?.currency])
+
   async function pickTickerMatch(match: MarketSymbolMatch) {
     setTickerMatches([])
     setFormTickerQuery(match.symbol)
     setQuoteLoading(true)
     try {
-      const quote = await assets.marketQuote(match.symbol)
+      const quote = await assets.marketQuote(match.symbol, formCurrency)
       setSelectedQuote(quote)
       // Prefill the unit price with the live quote — "buying at market now"
       // is the common case; the user overrides it with their real cost.
       // Trim float noise to the DB's 6-decimal scale (39.41999… → 39.42).
-      setFormUnitPrice(String(Number(quote.price.toFixed(6))))
-      // Auto-fill name/currency from the authoritative quote so the user
-      // doesn't have to think about it — they can still edit name after.
+      const unitPrice = holdingUnitPrice(quote.symbol, quote.price)
+      const keepHoldingCurrency =
+        isPhysicalMetalType(formType) ||
+        isPhysicalMetalOzTicker(quote.symbol) ||
+        isPhysicalMetalGramTicker(quote.symbol)
+      // Gold/silver stay blank so a previous purchase can skip cost and use
+      // the live market price. Stocks still prefill "bought at market now".
+      if (!keepHoldingCurrency) {
+        setFormUnitPrice(String(Number(unitPrice.toFixed(6))))
+      }
+      // Auto-fill name from the authoritative quote so the user doesn't
+      // have to think about it — they can still edit name after.
       if (!formName || formName === (selectedQuote?.name ?? selectedQuote?.symbol ?? '')) {
         setFormName(quote.name || quote.symbol)
       }
-      setFormCurrency(quote.currency)
-      // Classify the asset from the quote type (EQUITY → stock, etc.) so
-      // the Tipo dropdown lands on something meaningful by default. We
-      // skip this when the user already picked a non-default type, so
-      // manual overrides stick.
-      const suggestedType = assetTypeFromQuoteType(quote.quote_type)
-      if (formType === 'other' || formType === 'investment') {
+      if (!keepHoldingCurrency) {
+        setFormCurrency(quote.currency)
+      }
+      // Classify the asset from the quote type (EQUITY → stock, GC=F → gold)
+      // so the type dropdown lands on something meaningful. Metal tickers
+      // always win; otherwise we skip when the user already picked a
+      // non-default type so manual overrides stick.
+      const suggestedType = typeFromQuote(quote.quote_type, quote.symbol)
+      if (
+        formType === 'other' ||
+        formType === 'investment' ||
+        isPhysicalMetalType(suggestedType)
+      ) {
         setFormType(suggestedType)
       }
     } catch {
@@ -585,6 +644,7 @@ export default function AssetsPage() {
     setFormGrowthFrequency('monthly')
     setFormGrowthStartDate('')
     resetMarketPriceForm()
+    setFormKarat(DEFAULT_GOLD_KARAT)
     setDialogOpen(true)
   }
 
@@ -605,6 +665,11 @@ export default function AssetsPage() {
     setFormGrowthFrequency(asset.growth_frequency ?? 'monthly')
     setFormGrowthStartDate(asset.growth_start_date ?? '')
     resetMarketPriceForm()
+    setFormKarat(
+      asset.karat && (GOLD_KARATS as readonly number[]).includes(asset.karat)
+        ? (asset.karat as GoldKarat)
+        : DEFAULT_GOLD_KARAT,
+    )
     if (asset.valuation_method === 'market_price' && asset.ticker) {
       setFormTickerQuery(asset.ticker)
       setFormUnits(asset.units?.toString() ?? '')
@@ -624,6 +689,14 @@ export default function AssetsPage() {
     setDialogOpen(true)
   }
 
+  function metalQuoteUnitPrice(quote: { symbol: string; price: number }): number {
+    if (editingAsset && formType === 'gold') {
+      const from = editingAsset.karat || DEFAULT_GOLD_KARAT
+      return quote.price * (formKarat / from)
+    }
+    return holdingUnitPrice(quote.symbol, quote.price, formType === 'gold' ? formKarat : null)
+  }
+
   function buildPayload() {
     const isMarket = formMethod === 'market_price'
     const payload: Record<string, unknown> = {
@@ -639,6 +712,7 @@ export default function AssetsPage() {
       purchase_price: isMarket ? null : (formPurchasePrice ? parseFloat(formPurchasePrice) : null),
       sell_date: isMarket ? null : (formSellDate || null),
       sell_price: isMarket ? null : (formSellPrice ? parseFloat(formSellPrice) : null),
+      karat: formType === 'gold' ? formKarat : null,
     }
 
     if (formMethod === 'growth_rule') {
@@ -760,7 +834,13 @@ export default function AssetsPage() {
           </div>
           {/* Quant. */}
           <div className="text-right tabular-nums text-muted-foreground">
-            {asset.units != null ? mask(`${asset.units}`) : '—'}
+            {asset.units != null
+              ? mask(
+                  isPhysicalMetalType(asset.type)
+                    ? `${asset.units} g${asset.type === 'gold' && asset.karat ? ` · ${asset.karat}K` : ''}`
+                    : `${asset.units}`,
+                )
+              : '—'}
           </div>
           {/* Preço Médio */}
           <div className="text-right tabular-nums">
@@ -893,6 +973,55 @@ export default function AssetsPage() {
     return (walletsList ?? []).slice().sort((a, b) => a.position - b.position || a.name.localeCompare(b.name))
   }, [walletsList])
 
+  const connectionsById = useMemo(() => {
+    const map = new Map<string, BankConnection>()
+    for (const conn of connectionsList ?? []) map.set(conn.id, conn)
+    return map
+  }, [connectionsList])
+
+  const providersByName = useMemo(() => {
+    const map = new Map<string, { flow_type: string }>()
+    for (const p of providersList ?? []) map.set(p.name, { flow_type: p.flow_type })
+    return map
+  }, [providersList])
+
+  const staleSyncedConnections = useMemo(() => {
+    const seen = new Set<string>()
+    const stale: BankConnection[] = []
+    for (const wallet of sortedWallets) {
+      if (wallet.source === 'manual' || !wallet.connection_id) continue
+      const conn = connectionsById.get(wallet.connection_id)
+      if (!conn || !connectionNeedsReconnect(conn.status) || seen.has(conn.id)) continue
+      seen.add(conn.id)
+      stale.push(conn)
+    }
+    return stale
+  }, [sortedWallets, connectionsById])
+
+  const syncConnectionMutation = useMutation({
+    mutationFn: (connectionId: string) => connections.sync(connectionId),
+    onSuccess: () => {
+      invalidateFinancialQueries(queryClient)
+      queryClient.invalidateQueries({ queryKey: ['connections'] })
+      toast.success(t('accounts.syncDone'))
+    },
+    onError: (err) => {
+      queryClient.invalidateQueries({ queryKey: ['connections'] })
+      const detail = axios.isAxiosError(err) ? err.response?.data?.detail : null
+      const message = typeof detail === 'string' ? detail : detail?.message
+      toast.error(message || t('accounts.syncError'))
+    },
+  })
+
+  const kiteProvider = useMemo(
+    () => (providersList ?? []).find((p) => p.name === 'kite' && p.configured),
+    [providersList],
+  )
+  const hasKiteConnection = useMemo(
+    () => (connectionsList ?? []).some((c) => c.provider === 'kite'),
+    [connectionsList],
+  )
+
   const ungroupedAssets = assetsByGroup.get(null) ?? []
 
   function toggleWalletCollapse(id: string) {
@@ -931,6 +1060,11 @@ export default function AssetsPage() {
   function renderWalletSection(wallet: AssetGroup, walletAssets: Asset[]) {
     const isCollapsed = collapsedWallets.has(wallet.id)
     const isSynced = wallet.source !== 'manual'
+    const connection = wallet.connection_id ? connectionsById.get(wallet.connection_id) : undefined
+    const needsReconnect = connection ? connectionNeedsReconnect(connection.status) : false
+    const providerFlow = connection ? providersByName.get(connection.provider)?.flow_type : undefined
+    const syncPending = syncConnectionMutation.isPending
+      && syncConnectionMutation.variables === wallet.connection_id
     // Sum in wallet's reported current_value (already computed by backend).
     // Fall back to per-asset sum if the rollup is stale after a move.
     const total = walletAssets.reduce((s, a) => s + (a.current_value_primary ?? a.current_value ?? 0), 0) || wallet.current_value_primary || wallet.current_value
@@ -973,11 +1107,53 @@ export default function AssetsPage() {
                   {t('assets.syncedFrom', { source: wallet.institution_name })}
                 </span>
               )}
+              {isSynced && needsReconnect && (
+                <span className="text-[11px] text-amber-600 truncate flex items-center gap-1">
+                  <AlertTriangle size={9} />
+                  {connection?.status === 'expired'
+                    ? t('assets.sessionExpired')
+                    : t('assets.connectionNeedsReconnect')}
+                </span>
+              )}
             </div>
           </button>
           <span className="text-sm font-bold tabular-nums text-foreground shrink-0">
             {mask(formatCurrency(total, userCurrency, locale))}
           </span>
+          {canWrite && isSynced && connection && (
+            <>
+              {needsReconnect ? (
+                providerFlow === 'oauth' ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 px-2 text-xs text-amber-700 border-amber-300 hover:bg-amber-50"
+                    onClick={() => startOAuthReconnect(connection.id, '/assets')}
+                  >
+                    {t('accounts.reconnect')}
+                  </Button>
+                ) : (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 px-2 text-xs"
+                    onClick={() => navigate('/accounts')}
+                  >
+                    {t('assets.reconnectOnAccounts')}
+                  </Button>
+                )
+              ) : (
+                <button
+                  onClick={() => syncConnectionMutation.mutate(connection.id)}
+                  disabled={syncPending}
+                  className="p-1 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors disabled:opacity-50"
+                  title={t('accounts.sync')}
+                >
+                  <RefreshCw size={12} className={syncPending ? 'animate-spin' : ''} />
+                </button>
+              )}
+            </>
+          )}
           {canWrite && (
             <>
               <button
@@ -1021,6 +1197,16 @@ export default function AssetsPage() {
         action={
           canWrite ? (
             <div className="flex items-center gap-2">
+              {kiteProvider && !hasKiteConnection && (
+                <Button
+                  onClick={() => setKiteConnectOpen(true)}
+                  variant="outline"
+                  className="gap-1.5"
+                >
+                  <TrendingUp size={16} />
+                  {t('assets.connectZerodha')}
+                </Button>
+              )}
               <Button onClick={() => navigate('/import?tab=investments')} variant="outline" className="gap-1.5">
                 <Upload size={16} />
                 {t('assetImport.action')}
@@ -1037,6 +1223,48 @@ export default function AssetsPage() {
           ) : undefined
         }
       />
+
+      {staleSyncedConnections.length > 0 && (
+        <div className="rounded-xl border border-amber-300 bg-amber-50 dark:border-amber-700/40 dark:bg-amber-900/20 px-4 py-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-start gap-3 min-w-0">
+            <AlertTriangle size={16} className="text-amber-600 shrink-0 mt-0.5" />
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-amber-900 dark:text-amber-100">
+                {t('assets.syncStaleTitle')}
+              </p>
+              <p className="text-xs text-amber-800/80 dark:text-amber-200/80">
+                {t('assets.syncStaleDescription')}
+              </p>
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2 shrink-0">
+            {staleSyncedConnections.map((conn) => {
+              const flow = providersByName.get(conn.provider)?.flow_type
+              return flow === 'oauth' ? (
+                <Button
+                  key={conn.id}
+                  size="sm"
+                  variant="outline"
+                  className="border-amber-300 text-amber-800 hover:bg-amber-100"
+                  onClick={() => startOAuthReconnect(conn.id, '/assets')}
+                >
+                  {t('assets.reconnectInstitution', { name: conn.institution_name })}
+                </Button>
+              ) : (
+                <Button
+                  key={conn.id}
+                  size="sm"
+                  variant="outline"
+                  className="border-amber-300 text-amber-800 hover:bg-amber-100"
+                  onClick={() => navigate('/accounts')}
+                >
+                  {t('assets.reconnectInstitution', { name: conn.institution_name })}
+                </Button>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Holdings (consolidated by ticker) vs. the buy/sell ledger (#235) */}
       <div className="inline-flex items-center rounded-lg border border-border p-0.5 bg-muted/40">
@@ -1171,7 +1399,23 @@ export default function AssetsPage() {
                 <select
                   className="bg-card border border-border focus:outline-none focus:ring-2 focus:ring-primary px-3 py-2 rounded-lg text-foreground text-sm w-full"
                   value={formType}
-                  onChange={e => setFormType(e.target.value)}
+                  onChange={e => {
+                    const nextType = e.target.value
+                    setFormType(nextType)
+                    if (nextType === 'gold') setFormKarat(DEFAULT_GOLD_KARAT)
+                    if (editingAsset || !isPhysicalMetalType(nextType)) return
+                    setFormMethod('market_price')
+                    const suggested = defaultMetalTicker(nextType as 'gold' | 'silver')
+                    const current = formTickerQuery.trim().toUpperCase()
+                    if (!current || isPhysicalMetalOzTicker(current) || isPhysicalMetalGramTicker(current)) {
+                      void pickTickerMatch({
+                        symbol: suggested,
+                        name: suggested,
+                        exchange: 'GoldPriceZ',
+                        quote_type: 'METAL',
+                      })
+                    }
+                  }}
                 >
                   {ASSET_TYPES.map(at => (
                     <option key={at} value={at}>
@@ -1185,7 +1429,7 @@ export default function AssetsPage() {
                 <select
                   className="bg-card border border-border focus:outline-none focus:ring-2 focus:ring-primary px-3 py-2 rounded-lg text-foreground text-sm w-full disabled:opacity-60 disabled:cursor-not-allowed"
                   value={formCurrency}
-                  disabled={formMethod === 'market_price'}
+                  disabled={locksQuoteCurrency(formType, formMethod)}
                   onChange={e => setFormCurrency(e.target.value)}
                 >
                   {(supportedCurrencies ?? [{ code: userCurrency, symbol: userCurrency, name: userCurrency, flag: '' }]).map((c) => (
@@ -1194,8 +1438,9 @@ export default function AssetsPage() {
                 </select>
               </div>
             </div>
-
-            {/* Valuation Method — locked on edit */}
+            {isPhysicalMetalType(formType) && (
+              <p className="text-[11px] text-muted-foreground">{t('assets.metalCurrencyHint')}</p>
+            )}
             <div className="space-y-2">
               <Label>{t('assets.valuationMethod')}</Label>
               <div className="grid gap-2 grid-cols-3">
@@ -1228,7 +1473,11 @@ export default function AssetsPage() {
                   <Label>{t('assets.ticker')}</Label>
                   <div className="relative">
                     <Input
-                      placeholder={t('assets.tickerPlaceholder')}
+                      placeholder={
+                        isPhysicalMetalType(formType)
+                          ? t('assets.metalTickerPlaceholder')
+                          : t('assets.tickerPlaceholder')
+                      }
                       value={formTickerQuery}
                       disabled={!!editingAsset}
                       onChange={e => {
@@ -1296,7 +1545,11 @@ export default function AssetsPage() {
                       <div className="flex items-center gap-2 shrink-0">
                         <div className="text-right">
                           <div className="text-base font-bold tabular-nums">
-                            {formatCurrency(selectedQuote.price, selectedQuote.currency, locale)}
+                            {formatCurrency(
+                              metalQuoteUnitPrice(selectedQuote),
+                              selectedQuote.currency,
+                              locale,
+                            )}
                           </div>
                           {selectedQuote.exchange && (
                             <div className="text-[10px] text-muted-foreground uppercase tracking-wide">
@@ -1329,7 +1582,9 @@ export default function AssetsPage() {
                 {!editingAsset ? (
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-2">
-                      <Label>{t('assets.quantity')}</Label>
+                      <Label>
+                        {isPhysicalMetalType(formType) ? t('assets.weightGrams') : t('assets.quantity')}
+                      </Label>
                       <Input
                         type="number"
                         step="any"
@@ -1340,22 +1595,53 @@ export default function AssetsPage() {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label>{t('assets.unitPrice')}</Label>
+                      <Label>
+                        {isPhysicalMetalType(formType)
+                          ? t('assets.metalPurchasePrice')
+                          : t('assets.unitPrice')}
+                      </Label>
                       <Input
                         type="number"
                         step="any"
                         min="0"
                         value={formUnitPrice}
                         onChange={e => setFormUnitPrice(e.target.value)}
-                        placeholder={selectedQuote ? String(selectedQuote.price) : '0.00'}
+                        placeholder={
+                          selectedQuote
+                            ? String(Number(metalQuoteUnitPrice(selectedQuote).toFixed(6)))
+                            : '0.00'
+                        }
                       />
                     </div>
                   </div>
                 ) : (
                   <div className="space-y-2">
-                    <Label>{t('assets.quantity')}</Label>
+                    <Label>
+                      {isPhysicalMetalType(formType) ? t('assets.weightGrams') : t('assets.quantity')}
+                    </Label>
                     <Input type="number" step="any" min="0" value={formUnits} onChange={e => setFormUnits(e.target.value)} placeholder="10" />
                   </div>
+                )}
+                {formType === 'gold' && (
+                  <div className="space-y-2">
+                    <Label>{t('assets.karat')}</Label>
+                    <select
+                      className="bg-card border border-border focus:outline-none focus:ring-2 focus:ring-primary px-3 py-2 rounded-lg text-foreground text-sm w-full"
+                      value={formKarat}
+                      onChange={e => setFormKarat(Number(e.target.value) as GoldKarat)}
+                    >
+                      {GOLD_KARATS.map(k => (
+                        <option key={k} value={k}>{k}K</option>
+                      ))}
+                    </select>
+                    <p className="text-[11px] text-muted-foreground">{t('assets.karatHint')}</p>
+                  </div>
+                )}
+                {isPhysicalMetalType(formType) && formMethod === 'market_price' && (
+                  <p className="text-[11px] text-muted-foreground">{t('assets.metalWeightHint')}</p>
+                )}
+                {isPhysicalMetalType(formType) && formMethod === 'market_price' && !editingAsset && (
+                  <p className="text-[11px] text-muted-foreground">{t('assets.metalPurchasePriceHint')}</p>
                 )}
 
                 {/* Buy total — same qty × unit price model as the ledger, so
@@ -1367,7 +1653,10 @@ export default function AssetsPage() {
                     </span>
                     <span className="text-lg font-bold tabular-nums text-primary">
                       {formatCurrency(
-                        (parseFloat(formUnitPrice) || selectedQuote?.price || 0) * parseFloat(formUnits),
+                        (parseFloat(formUnitPrice) ||
+                          (selectedQuote
+                            ? metalQuoteUnitPrice(selectedQuote)
+                            : 0)) * parseFloat(formUnits),
                         selectedQuote?.currency || formCurrency,
                         locale,
                       )}
@@ -1683,11 +1972,56 @@ export default function AssetsPage() {
         onClose={() => setAddTxAssetId(null)}
         onChanged={refetchAssetViews}
       />
+
+      <OAuthConnectDialog
+        open={kiteConnectOpen}
+        onClose={() => setKiteConnectOpen(false)}
+        provider="kite"
+        supportsAssetSync
+        requiresInstitutionSelect={false}
+        returnTo="/assets"
+      />
     </div>
   )
 }
 
 const PORTFOLIO_COLORS = ['#6366F1', '#F43F5E', '#F59E0B', '#10B981', '#8B5CF6', '#EC4899', '#06B6D4', '#84CC16']
+
+type PortfolioRangeOption = { key: string; months?: number; period?: 'ytd'; all?: boolean }
+
+const PORTFOLIO_RANGE_OPTIONS: readonly PortfolioRangeOption[] = [
+  { key: '3m', months: 3 },
+  { key: '6m', months: 6 },
+  { key: '1y', months: 12 },
+  { key: 'ytd', months: 12, period: 'ytd' },
+  { key: 'all', all: true },
+]
+
+const PORTFOLIO_RANGE_LABELS: Record<string, string> = {
+  '3m': 'range3m',
+  '6m': 'range6m',
+  '1y': 'range1y',
+  'ytd': 'rangeYtd',
+  'all': 'rangeAll',
+}
+
+function filterPortfolioTrendByRange(
+  trend: Record<string, unknown>[],
+  option: PortfolioRangeOption,
+): Record<string, unknown>[] {
+  if (option.all || trend.length === 0) return trend
+  const lastDateStr = String(trend[trend.length - 1].date)
+  const lastDate = new Date(`${lastDateStr}T00:00:00`)
+  let startDate: Date
+  if (option.period === 'ytd') {
+    startDate = new Date(lastDate.getFullYear(), 0, 1)
+  } else {
+    startDate = new Date(lastDate)
+    startDate.setMonth(startDate.getMonth() - (option.months ?? 12))
+  }
+  const startStr = localDateString(startDate)
+  return trend.filter((row) => String(row.date) >= startStr)
+}
 
 function PortfolioChart({ data, wallets, currency, locale: loc, dateLocale: dateLoc, mask }: {
   data: { assets: { id: string; name: string; type: string; group_id: string | null }[]; trend: Record<string, unknown>[]; total: number }
@@ -1705,14 +2039,25 @@ function PortfolioChart({ data, wallets, currency, locale: loc, dateLocale: date
   // cumulative total.
   const [mode, setMode] = useState<'wallet' | 'asset'>('wallet')
   const [drawMode, setDrawMode] = useState<'stacked' | 'lines'>('stacked')
+  const [rangeKey, setRangeKey] = useState('1y')
+  const [excludedSeriesKeys, setExcludedSeriesKeys] = useState<Set<string>>(() => new Set())
   const isStacked = drawMode === 'stacked'
+  const selectedRange = PORTFOLIO_RANGE_OPTIONS.find((r) => r.key === rangeKey) ?? PORTFOLIO_RANGE_OPTIONS[2]
 
-  const formatCompact = (v: number) => {
-    const abs = Math.abs(v)
-    if (abs >= 1_000_000) return `${(v / 1_000_000).toFixed(1)}M`
-    if (abs >= 1_000) return `${(v / 1_000).toFixed(abs >= 10_000 ? 0 : 1)}k`
-    return v.toLocaleString(loc, { maximumFractionDigits: 0 })
+  useEffect(() => {
+    setExcludedSeriesKeys(new Set())
+  }, [mode])
+
+  const toggleSeries = (key: string) => {
+    setExcludedSeriesKeys((prev) => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
   }
+
+  const formatCompact = (v: number) => formatCompactNumber(v, loc)
 
   // Compute the series list and rewrite trend rows based on the selected
   // mode. Wallet mode rolls all assets sharing a group_id into a single
@@ -1787,15 +2132,35 @@ function PortfolioChart({ data, wallets, currency, locale: loc, dateLocale: date
 
     return { series: s, displayTrend: newTrend }
   }, [mode, data, wallets, t])
+
+  const { visibleSeries, chartTrend, displayTotal } = useMemo(() => {
+    const ranged = filterPortfolioTrendByRange(displayTrend, selectedRange)
+    const visible = series.filter((s) => !excludedSeriesKeys.has(s.key))
+    const chart = ranged.map((row) => {
+      const next: Record<string, unknown> = { date: row.date }
+      let total = 0
+      for (const s of visible) {
+        const value = (row[s.key] as number) ?? 0
+        next[s.key] = value
+        total += value
+      }
+      next._total = total
+      return next
+    })
+    const lastRow = chart[chart.length - 1]
+    const total = lastRow ? ((lastRow._total as number) ?? 0) : 0
+    return { visibleSeries: visible, chartTrend: chart, displayTotal: total }
+  }, [displayTrend, series, excludedSeriesKeys, selectedRange])
+
   const sortedSeries = useMemo(() => {
-    const lastRow = displayTrend[displayTrend.length - 1]
-    if (!lastRow) return series
-    return [...series].sort((a, b) => {
+    const lastRow = chartTrend[chartTrend.length - 1]
+    if (!lastRow) return visibleSeries
+    return [...visibleSeries].sort((a, b) => {
       const av = Math.abs((lastRow[a.key] as number) ?? 0)
       const bv = Math.abs((lastRow[b.key] as number) ?? 0)
       return bv - av || a.name.localeCompare(b.name)
     })
-  }, [series, displayTrend])
+  }, [visibleSeries, chartTrend])
 
   return (
     <div className="border border-border rounded-xl bg-card shadow-sm p-5">
@@ -1839,18 +2204,37 @@ function PortfolioChart({ data, wallets, currency, locale: loc, dateLocale: date
                 {t('assets.chartLines')}
               </button>
             </div>
+            <div role="group" aria-label={t('assets.chartRange')} className="inline-flex items-center rounded-lg border border-border bg-card overflow-hidden">
+              {PORTFOLIO_RANGE_OPTIONS.map((opt) => (
+                <button
+                  key={opt.key}
+                  type="button"
+                  aria-pressed={rangeKey === opt.key}
+                  onClick={() => setRangeKey(opt.key)}
+                  className={`px-2.5 py-1 text-[11px] font-semibold transition-colors ${
+                    rangeKey === opt.key
+                      ? 'bg-primary text-primary-foreground'
+                      : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                  }`}
+                >
+                  {opt.key === 'all'
+                    ? t('assets.rangeAll')
+                    : t(`reports.${PORTFOLIO_RANGE_LABELS[opt.key]}`)}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
         <div className="text-left sm:text-right">
           <span className="text-xs text-muted-foreground">{t('assets.total')}</span>
           <p className="text-lg font-bold tabular-nums text-foreground">
-            {mask(formatCurrency(data.total, currency, loc))}
+            {mask(formatCurrency(displayTotal, currency, loc))}
           </p>
         </div>
       </div>
       <div className="h-56">
         <ResponsiveContainer width="100%" height="100%">
-          <AreaChart data={displayTrend} margin={{ top: 4, right: 12, left: 0, bottom: 0 }}>
+          <AreaChart data={chartTrend} margin={{ top: 4, right: 12, left: 0, bottom: 0 }}>
             <defs>
               {isStacked && sortedSeries.map(s => (
                 <linearGradient key={s.key} id={`portfolio-grad-${s.key}`} x1="0" y1="0" x2="0" y2="1">
@@ -1877,7 +2261,7 @@ function PortfolioChart({ data, wallets, currency, locale: loc, dateLocale: date
             <RechartsTooltip
               content={({ active, payload, label }) => {
                 if (!active || !payload?.length) return null
-                const row = displayTrend.find(r => r.date === label)
+                const row = chartTrend.find(r => r.date === label)
                 const dateTotal = row ? ((row._total as number) ?? 0) : 0
                 const items = sortedSeries
                   .map(s => {
@@ -1929,14 +2313,31 @@ function PortfolioChart({ data, wallets, currency, locale: loc, dateLocale: date
           </AreaChart>
         </ResponsiveContainer>
       </div>
-      {/* Legend */}
-      <div className="flex flex-wrap gap-x-4 gap-y-1 mt-3 px-1">
-        {sortedSeries.map(s => (
-          <div key={s.key} className="flex items-center gap-1.5">
-            <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: s.color }} />
-            <span className="text-[11px] text-muted-foreground">{s.name}</span>
-          </div>
-        ))}
+      {/* Legend — click a wallet/asset to include or exclude it from the chart */}
+      <div className="flex flex-wrap gap-x-3 gap-y-1.5 mt-3 px-1">
+        {series.map(s => {
+          const included = !excludedSeriesKeys.has(s.key)
+          return (
+            <button
+              key={s.key}
+              type="button"
+              aria-pressed={included}
+              aria-label={t('assets.chartToggleSeries', { name: s.name })}
+              onClick={() => toggleSeries(s.key)}
+              className={`inline-flex items-center gap-1.5 rounded-md px-1 py-0.5 transition-opacity hover:bg-muted/50 ${
+                included ? 'opacity-100' : 'opacity-45'
+              }`}
+            >
+              <div
+                className="w-2.5 h-2.5 rounded-full shrink-0"
+                style={{ backgroundColor: s.color, opacity: included ? 1 : 0.35 }}
+              />
+              <span className={`text-[11px] ${included ? 'text-muted-foreground' : 'text-muted-foreground/70 line-through'}`}>
+                {s.name}
+              </span>
+            </button>
+          )
+        })}
       </div>
     </div>
   )
@@ -2109,14 +2510,7 @@ function AssetDetail({ assetId, currency, locale: loc, dateLocale: dateLoc, purc
                   tickLine={false}
                   width={56}
                   domain={['dataMin', 'dataMax']}
-                  tickFormatter={(v: number) => {
-                    const abs = Math.abs(v)
-                    let formatted: string
-                    if (abs >= 1_000_000) formatted = `${(v / 1_000_000).toFixed(1)}M`
-                    else if (abs >= 1_000) formatted = `${(v / 1_000).toFixed(abs >= 10_000 ? 0 : 1)}k`
-                    else formatted = v.toLocaleString(loc, { maximumFractionDigits: 0 })
-                    return mask(formatted)
-                  }}
+                  tickFormatter={(v: number) => mask(formatCompactNumber(v, loc))}
                 />
                 <RechartsTooltip
                   content={({ active, payload, label }) => {
@@ -2307,7 +2701,19 @@ function AssetTransactionsTab({
   const saveMutation = useMutation({
     mutationFn: async () => {
       const quantity = parseFloat(formQuantity)
-      const price = parseFloat(formPrice)
+      const holding = marketHoldings.find((h) => h.id === formHolding)
+      const metalBuy =
+        formKind === 'buy' &&
+        (isPhysicalMetalType(holding?.type ?? '') ||
+          isPhysicalMetalGramTicker(formTicker) ||
+          isPhysicalMetalOzTicker(formTicker))
+      const price = resolvedPurchaseUnitPrice(
+        formPrice,
+        metalBuy ? holding?.last_price : null,
+      )
+      if (price == null) {
+        throw new Error('price required')
+      }
       const fee = formFee ? parseFloat(formFee) : 0
       if (editingTx) {
         return assets.updateTransaction(editingTx.id, {
@@ -2387,15 +2793,28 @@ function AssetTransactionsTab({
   }
 
   const isNewTicker = !editingTx && formHolding === '__new__'
+  const selectedHolding = marketHoldings.find((h) => h.id === formHolding)
+  const selectedHeldUnits = selectedHolding?.units ?? 0
+  const quantityIsGrams =
+    isPhysicalMetalType(selectedHolding?.type ?? '') ||
+    (isNewTicker &&
+      (isPhysicalMetalOzTicker(formTicker) || isPhysicalMetalGramTicker(formTicker)))
+  const metalBuyUsesMarket =
+    formKind === 'buy' &&
+    quantityIsGrams &&
+    selectedHolding?.last_price != null
+  const resolvedTxPrice = resolvedPurchaseUnitPrice(
+    formPrice,
+    metalBuyUsesMarket ? selectedHolding?.last_price : null,
+  )
   // Warn before a sell that exceeds the held quantity (no shorting). Only on a
   // fresh sell into an existing holding; edits are validated server-side.
-  const selectedHeldUnits = marketHoldings.find((h) => h.id === formHolding)?.units ?? 0
   const oversell =
     !editingTx && !isNewTicker && formKind === 'sell' && !!formQuantity && parseFloat(formQuantity) > selectedHeldUnits
   const canSave =
     !!formQuantity &&
     parseFloat(formQuantity) > 0 &&
-    !!formPrice &&
+    resolvedTxPrice != null &&
     (isNewTicker ? !!formTicker.trim() : true) &&
     !oversell &&
     !saveMutation.isPending
@@ -2588,12 +3007,23 @@ function AssetTransactionsTab({
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>{t('assets.quantity')}</Label>
+                <Label>{quantityIsGrams ? t('assets.weightGrams') : t('assets.quantity')}</Label>
                 <Input type="number" step="any" min="0" value={formQuantity} onChange={(e) => setFormQuantity(e.target.value)} />
               </div>
               <div className="space-y-2">
-                <Label>{t('assets.unitPrice')}</Label>
-                <Input type="number" step="any" min="0" value={formPrice} onChange={(e) => setFormPrice(e.target.value)} />
+                <Label>{quantityIsGrams ? t('assets.metalPurchasePrice') : t('assets.unitPrice')}</Label>
+                <Input
+                  type="number"
+                  step="any"
+                  min="0"
+                  value={formPrice}
+                  onChange={(e) => setFormPrice(e.target.value)}
+                  placeholder={
+                    metalBuyUsesMarket && selectedHolding?.last_price != null
+                      ? String(selectedHolding.last_price)
+                      : undefined
+                  }
+                />
               </div>
             </div>
 
@@ -2608,19 +3038,22 @@ function AssetTransactionsTab({
               </div>
             </div>
 
+            {quantityIsGrams && metalBuyUsesMarket && !formPrice && (
+              <p className="text-[11px] text-muted-foreground">{t('assets.metalPurchasePriceHint')}</p>
+            )}
             {oversell && (
               <p className="flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-400">
                 <AlertTriangle size={13} className="shrink-0" />
                 {t('assets.oversellWarning', { available: selectedHeldUnits })}
               </p>
             )}
-            {formQuantity && formPrice && parseFloat(formQuantity) > 0 && (
+            {formQuantity && resolvedTxPrice != null && parseFloat(formQuantity) > 0 && (
               <div className="flex items-center justify-between p-3 rounded-lg border border-border bg-muted/30">
-                <span className="text-xs font-medium text-muted-foreground">{t('assets.txTotal')}</span>
+                <span className="text-xs text-muted-foreground">{t('assets.txTotal')}</span>
                 <span className="text-sm font-bold tabular-nums text-foreground">
                   {formatCurrency(
-                    parseFloat(formQuantity) * parseFloat(formPrice) + (formFee ? parseFloat(formFee) : 0) * (formKind === 'buy' ? 1 : -1),
-                    'USD',
+                    parseFloat(formQuantity) * resolvedTxPrice + (formFee ? parseFloat(formFee) : 0) * (formKind === 'buy' ? 1 : -1),
+                    selectedHolding?.currency || 'USD',
                     locale,
                   )}
                 </span>
@@ -2777,14 +3210,23 @@ function AddHoldingTransactionDialog({
   }, [assetId])
 
   const saveMutation = useMutation({
-    mutationFn: () =>
-      assets.addTransaction(assetId!, {
+    mutationFn: () => {
+      const metalBuy = kind === 'buy' && !!holding && isPhysicalMetalType(holding.type)
+      const resolved = resolvedPurchaseUnitPrice(
+        price,
+        metalBuy ? holding?.last_price : null,
+      )
+      if (resolved == null) {
+        return Promise.reject(new Error('price required'))
+      }
+      return assets.addTransaction(assetId!, {
         kind,
         quantity: parseFloat(quantity),
-        price: parseFloat(price),
+        price: resolved,
         fee: fee ? parseFloat(fee) : 0,
         date,
-      }),
+      })
+    },
     onSuccess: () => {
       queryClient.refetchQueries({ queryKey: ['asset-transactions'] })
       if (assetId) queryClient.refetchQueries({ queryKey: ['asset-transactions', assetId] })
@@ -2797,8 +3239,14 @@ function AddHoldingTransactionDialog({
 
   const cur = holding?.currency ?? 'USD'
   const heldUnits = holding?.units ?? 0
+  const metalBuyUsesMarket =
+    kind === 'buy' && !!holding && isPhysicalMetalType(holding.type) && holding.last_price != null
+  const resolvedPrice = resolvedPurchaseUnitPrice(
+    price,
+    metalBuyUsesMarket ? holding?.last_price : null,
+  )
   const oversell = kind === 'sell' && !!quantity && parseFloat(quantity) > heldUnits
-  const canSave = !!quantity && parseFloat(quantity) > 0 && !!price && !oversell && !saveMutation.isPending
+  const canSave = !!quantity && parseFloat(quantity) > 0 && resolvedPrice != null && !oversell && !saveMutation.isPending
 
   return (
     <Dialog open={!!assetId} onOpenChange={(o) => { if (!o) onClose() }}>
@@ -2826,12 +3274,23 @@ function AddHoldingTransactionDialog({
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label>{t('assets.quantity')}</Label>
+              <Label>{holding && isPhysicalMetalType(holding.type) ? t('assets.weightGrams') : t('assets.quantity')}</Label>
               <Input type="number" step="any" min="0" value={quantity} onChange={(e) => setQuantity(e.target.value)} />
             </div>
             <div className="space-y-2">
-              <Label>{t('assets.unitPrice')}</Label>
-              <Input type="number" step="any" min="0" value={price} onChange={(e) => setPrice(e.target.value)} />
+              <Label>{holding && isPhysicalMetalType(holding.type) ? t('assets.metalPurchasePrice') : t('assets.unitPrice')}</Label>
+              <Input
+                type="number"
+                step="any"
+                min="0"
+                value={price}
+                onChange={(e) => setPrice(e.target.value)}
+                placeholder={
+                  metalBuyUsesMarket && holding?.last_price != null
+                    ? String(holding.last_price)
+                    : undefined
+                }
+              />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-4">
@@ -2844,17 +3303,20 @@ function AddHoldingTransactionDialog({
               <DatePickerInput value={date} onChange={setDate} />
             </div>
           </div>
+          {holding && isPhysicalMetalType(holding.type) && metalBuyUsesMarket && !price && (
+            <p className="text-[11px] text-muted-foreground">{t('assets.metalPurchasePriceHint')}</p>
+          )}
           {oversell && (
             <p className="flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-400">
               <AlertTriangle size={13} className="shrink-0" />
               {t('assets.oversellWarning', { available: heldUnits })}
             </p>
           )}
-          {quantity && price && parseFloat(quantity) > 0 && (
+          {quantity && resolvedPrice != null && parseFloat(quantity) > 0 && (
             <div className="flex items-center justify-between p-3 rounded-lg border border-border bg-muted/30">
               <span className="text-xs font-medium text-muted-foreground">{t('assets.txTotal')}</span>
               <span className="text-sm font-bold tabular-nums text-foreground">
-                {formatCurrency(parseFloat(quantity) * parseFloat(price) + (fee ? parseFloat(fee) : 0) * (kind === 'buy' ? 1 : -1), cur, locale)}
+                {formatCurrency(parseFloat(quantity) * resolvedPrice + (fee ? parseFloat(fee) : 0) * (kind === 'buy' ? 1 : -1), cur, locale)}
               </span>
             </div>
           )}

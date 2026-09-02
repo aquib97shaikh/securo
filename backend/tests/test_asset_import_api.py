@@ -20,7 +20,7 @@ class StubProvider(MarketPriceProvider):
     async def search(self, query: str, limit: int = 20):
         return []
 
-    async def get_quote(self, symbol: str) -> Optional[MarketSymbolQuote]:
+    async def get_quote(self, symbol: str, currency: Optional[str] = None) -> Optional[MarketSymbolQuote]:
         if symbol.upper() != "AAPL":
             return None
         return MarketSymbolQuote(

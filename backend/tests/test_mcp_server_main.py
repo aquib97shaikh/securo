@@ -168,6 +168,29 @@ async def test_mcp_unknown_method(test_user):
 
 
 @pytest.mark.asyncio
+async def test_mcp_initialized_notification_is_ack(test_user):
+    async with _client() as cli:
+        r = await cli.post(
+            "/mcp",
+            json={"jsonrpc": "2.0", "method": "notifications/initialized"},
+            headers=_auth_headers(test_user.id),
+        )
+    assert r.status_code == 204
+
+
+@pytest.mark.asyncio
+async def test_mcp_ping(test_user):
+    async with _client() as cli:
+        r = await cli.post(
+            "/mcp",
+            json={"jsonrpc": "2.0", "id": 2, "method": "ping"},
+            headers=_auth_headers(test_user.id),
+        )
+    assert r.status_code == 200
+    assert r.json()["result"] == {}
+
+
+@pytest.mark.asyncio
 async def test_mcp_tools_call_runs_real_tool(test_user, monkeypatch):
     """End-to-end happy path: auth → tools/call → real tool → structured
     JSON response. Uses list_categories because it has no pgvector

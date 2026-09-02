@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.asset import Asset
 from app.models.asset_value import AssetValue
+from app.models.fx_rate import FxRate
 from app.models.user import User
 from app.providers.market_price import (
     MarketPriceProvider,
@@ -34,6 +35,7 @@ from app.services.asset_service import (
     refresh_all_market_prices,
     refresh_market_price_asset,
 )
+from app.services.asset_type import TROY_OUNCE_GRAMS
 
 
 class FakeMarketProvider(MarketPriceProvider):
@@ -63,7 +65,7 @@ class FakeMarketProvider(MarketPriceProvider):
             MarketSymbolMatch(symbol=q, name=f"{q} Inc", exchange="NASDAQ", quote_type="EQUITY"),
         ]
 
-    async def get_quote(self, symbol: str) -> Optional[MarketSymbolQuote]:
+    async def get_quote(self, symbol: str, currency: Optional[str] = None) -> Optional[MarketSymbolQuote]:
         self._calls += 1
         if self.batch_calls > 0:
             self.quote_calls_after_batch += 1
@@ -387,3 +389,293 @@ async def test_refresh_all_halts_on_rate_limit(
     # skipped bucket, no per-asset fallback was attempted.
     assert result["refreshed"] == 0
     assert result["skipped"] == 2
+
+
+def _ounce_quote(symbol: str, ounce_price: Decimal, quote_type: str = "FUTURE") -> MarketSymbolQuote:
+    return MarketSymbolQuote(
+        symbol=symbol,
+        name=f"{symbol} metal",
+        exchange="CMX",
+        currency="USD",
+        price=float(ounce_price),
+        quote_type=quote_type,
+    )
+
+
+@pytest.mark.asyncio
+async def test_create_physical_gold_stores_per_gram_price(
+    session: AsyncSession, test_user: User, test_workspace
+):
+    """Yahoo quotes gold per troy ounce; holdings store weight in grams."""
+    ounce_price = TROY_OUNCE_GRAMS * Decimal("100")
+    provider = FakeMarketProvider({"GC=F": _ounce_quote("GC=F", ounce_price)})
+    created = await asset_service.create_asset(
+        session,
+        test_workspace.id,
+        test_user.id,
+        AssetCreate(
+            name="Physical gold",
+            type="gold",
+            valuation_method="market_price",
+            ticker="GC=F",
+            units=Decimal("10"),
+        ),
+        market_provider=provider,
+    )
+    assert created.last_price == pytest.approx(100.0)
+    assert created.current_value == pytest.approx(1000.0)
+    assert created.average_price == pytest.approx(100.0)
+
+
+@pytest.mark.asyncio
+async def test_refresh_physical_gold_converts_new_ounce_quote(
+    session: AsyncSession, test_user: User, test_workspace
+):
+    ounce_price = TROY_OUNCE_GRAMS * Decimal("100")
+    provider = FakeMarketProvider({"GC=F": _ounce_quote("GC=F", ounce_price)})
+    created = await asset_service.create_asset(
+        session,
+        test_workspace.id,
+        test_user.id,
+        AssetCreate(
+            name="Physical gold",
+            type="gold",
+            valuation_method="market_price",
+            ticker="GC=F",
+            units=Decimal("10"),
+        ),
+        market_provider=provider,
+    )
+    asset = await session.get(Asset, created.id)
+    assert asset is not None
+
+    moved = TROY_OUNCE_GRAMS * Decimal("120")
+    updated = await refresh_market_price_asset(
+        session, asset, market_provider=FakeMarketProvider({"GC=F": _ounce_quote("GC=F", moved)})
+    )
+    await session.commit()
+
+    assert updated is True
+    assert asset.last_price == Decimal("120.000000")
+    values = list(
+        (
+            await session.execute(select(AssetValue).where(AssetValue.asset_id == asset.id))
+        ).scalars().all()
+    )
+    todays = [v for v in values if v.date == date.today()]
+    assert len(todays) == 1
+    assert todays[0].amount == Decimal("1200.000000")
+
+
+@pytest.mark.asyncio
+async def test_refresh_all_converts_metal_batch_prices(
+    session: AsyncSession, test_user: User, test_workspace
+):
+    ounce_price = TROY_OUNCE_GRAMS * Decimal("80")
+    provider = FakeMarketProvider({"SI=F": _ounce_quote("SI=F", ounce_price)})
+    created = await asset_service.create_asset(
+        session,
+        test_workspace.id,
+        test_user.id,
+        AssetCreate(
+            name="Physical silver",
+            type="silver",
+            valuation_method="market_price",
+            ticker="SI=F",
+            units=Decimal("50"),
+        ),
+        market_provider=provider,
+    )
+    later = TROY_OUNCE_GRAMS * Decimal("90")
+    batch = FakeMarketProvider(
+        {"SI=F": _ounce_quote("SI=F", later)},
+        batch_prices={"SI=F": later},
+    )
+    result = await refresh_all_market_prices(session, market_provider=batch)
+    assert result["refreshed"] == 1
+
+    asset = await session.get(Asset, created.id)
+    assert asset is not None
+    assert asset.last_price == Decimal("90.000000")
+
+
+async def _seed_usd_inr(session: AsyncSession, rate: str = "83") -> None:
+    session.add(
+        FxRate(
+            base_currency="USD",
+            quote_currency="INR",
+            date=date.today(),
+            rate=Decimal(rate),
+            source="test",
+        )
+    )
+    await session.flush()
+
+
+@pytest.mark.asyncio
+async def test_create_physical_gold_uses_chosen_currency(
+    session: AsyncSession, test_user: User, test_workspace
+):
+    """Physical metal can be held in INR; the USD ounce quote is FX-converted."""
+    await _seed_usd_inr(session)
+    ounce_price = TROY_OUNCE_GRAMS * Decimal("100")
+    provider = FakeMarketProvider({"GC=F": _ounce_quote("GC=F", ounce_price)})
+    created = await asset_service.create_asset(
+        session,
+        test_workspace.id,
+        test_user.id,
+        AssetCreate(
+            name="Physical gold",
+            type="gold",
+            currency="INR",
+            valuation_method="market_price",
+            ticker="GC=F",
+            units=Decimal("10"),
+        ),
+        market_provider=provider,
+    )
+    assert created.currency == "INR"
+    assert created.last_price == pytest.approx(8300.0)
+    assert created.current_value == pytest.approx(83000.0)
+
+
+@pytest.mark.asyncio
+async def test_refresh_physical_gold_converts_into_holding_currency(
+    session: AsyncSession, test_user: User, test_workspace
+):
+    await _seed_usd_inr(session)
+    ounce_price = TROY_OUNCE_GRAMS * Decimal("100")
+    provider = FakeMarketProvider({"GC=F": _ounce_quote("GC=F", ounce_price)})
+    created = await asset_service.create_asset(
+        session,
+        test_workspace.id,
+        test_user.id,
+        AssetCreate(
+            name="Physical gold",
+            type="gold",
+            currency="INR",
+            valuation_method="market_price",
+            ticker="GC=F",
+            units=Decimal("10"),
+        ),
+        market_provider=provider,
+    )
+    asset = await session.get(Asset, created.id)
+    assert asset is not None
+
+    moved = TROY_OUNCE_GRAMS * Decimal("110")
+    updated = await refresh_market_price_asset(
+        session, asset, market_provider=FakeMarketProvider({"GC=F": _ounce_quote("GC=F", moved)})
+    )
+    await session.commit()
+
+    assert updated is True
+    assert asset.currency == "INR"
+    assert asset.last_price == Decimal("9130.000000")
+
+
+@pytest.mark.asyncio
+async def test_create_goldpricez_gold_keeps_per_gram_price(
+    session: AsyncSession, test_user: User, test_workspace
+):
+    """GoldPriceZ quotes are already per gram in the holding currency."""
+    provider = FakeMarketProvider({
+        "GOLD": MarketSymbolQuote(
+            symbol="GOLD",
+            name="Gold (spot, per gram)",
+            exchange="GoldPriceZ",
+            currency="INR",
+            price=7080.0,
+            quote_type="METAL",
+        )
+    })
+    created = await asset_service.create_asset(
+        session,
+        test_workspace.id,
+        test_user.id,
+        AssetCreate(
+            name="Physical gold",
+            type="gold",
+            currency="INR",
+            valuation_method="market_price",
+            ticker="GOLD",
+            units=Decimal("10"),
+        ),
+        market_provider=provider,
+    )
+    assert created.currency == "INR"
+    assert created.ticker == "GOLD"
+    assert created.last_price == pytest.approx(7080.0)
+    assert created.current_value == pytest.approx(70800.0)
+    assert created.source == "goldpricez"
+
+
+@pytest.mark.asyncio
+async def test_create_gold_without_purchase_price_uses_live_market(
+    session: AsyncSession, test_user: User, test_workspace
+):
+    """A previous gold buy with no unit price still costs in at today's quote."""
+    provider = FakeMarketProvider({
+        "GOLD": MarketSymbolQuote(
+            symbol="GOLD",
+            name="Gold (spot, per gram)",
+            exchange="GoldPriceZ",
+            currency="INR",
+            price=7080.0,
+            quote_type="METAL",
+        )
+    })
+    created = await asset_service.create_asset(
+        session,
+        test_workspace.id,
+        test_user.id,
+        AssetCreate(
+            name="Old gold",
+            type="gold",
+            currency="INR",
+            valuation_method="market_price",
+            ticker="GOLD",
+            units=Decimal("10"),
+            purchase_date=date(2020, 1, 15),
+        ),
+        market_provider=provider,
+    )
+    assert created.purchase_date == date(2020, 1, 15)
+    assert created.average_price == pytest.approx(7080.0)
+    assert created.total_invested == pytest.approx(70800.0)
+    assert created.gain_loss == pytest.approx(0.0)
+
+
+@pytest.mark.asyncio
+async def test_create_22k_gold_scales_live_gram_price(
+    session: AsyncSession, test_user: User, test_workspace
+):
+    provider = FakeMarketProvider({
+        "GOLD": MarketSymbolQuote(
+            symbol="GOLD",
+            name="Gold (spot, per gram)",
+            exchange="GoldPriceZ",
+            currency="INR",
+            price=2400.0,
+            quote_type="METAL",
+        )
+    })
+    created = await asset_service.create_asset(
+        session,
+        test_workspace.id,
+        test_user.id,
+        AssetCreate(
+            name="22K jewellery",
+            type="gold",
+            currency="INR",
+            valuation_method="market_price",
+            ticker="GOLD",
+            units=Decimal("10"),
+            karat=22,
+        ),
+        market_provider=provider,
+    )
+    assert created.karat == 22
+    assert created.last_price == pytest.approx(2200.0)
+    assert created.current_value == pytest.approx(22000.0)
+    assert created.average_price == pytest.approx(2200.0)

@@ -46,6 +46,7 @@ from app.schemas.asset_import import (
     AssetOrderImport,
 )
 from app.services import asset_transaction_service
+from app.services.asset_type import holding_unit_price, type_from_quote
 from app.services.import_service import (
     DATE_FORMAT_MAP,
     _sniff_csv_dialect,
@@ -577,7 +578,7 @@ async def import_orders(
                 user_id=user_id,
                 workspace_id=workspace_id,
                 name=order.name or quote.name or order.ticker,
-                type=asset_transaction_service._type_from_quote(quote.quote_type),
+                type=type_from_quote(quote.quote_type, order.ticker),
                 # The quote's currency wins, exactly as when a holding is
                 # created by hand: a file that reports an American stock in
                 # BRL would otherwise label the holding BRL while its price
@@ -587,7 +588,7 @@ async def import_orders(
                 group_id=group_id,
                 ticker=order.ticker,
                 ticker_exchange=quote.exchange,
-                last_price=Decimal(str(quote.price)),
+                last_price=holding_unit_price(order.ticker, Decimal(str(quote.price))),
                 last_price_at=datetime.now(timezone.utc),
                 logo_url=quote.logo_url,
                 source='yfinance',

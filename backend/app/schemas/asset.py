@@ -33,6 +33,8 @@ class AssetCreate(BaseModel):
     # médio model, consistent with the transaction ledger). When omitted, the
     # service seeds the buy at the live quote ("bought at market now").
     unit_price: Optional[Decimal] = None
+    # Gold purity. Ignored for every other type. 24 = pure (default).
+    karat: Optional[int] = None
 
 
 class AssetUpdate(BaseModel):
@@ -57,6 +59,7 @@ class AssetUpdate(BaseModel):
     group_id: Optional[uuid.UUID] = None
     ticker: Optional[str] = None
     ticker_exchange: Optional[str] = None
+    karat: Optional[int] = None
 
 
 class AssetRead(BaseModel):
@@ -100,6 +103,7 @@ class AssetRead(BaseModel):
     total_invested: Optional[float] = None
     realized_gain: Optional[float] = None
     transaction_count: int = 0
+    karat: Optional[int] = None
 
     model_config = ConfigDict(from_attributes=True)
 

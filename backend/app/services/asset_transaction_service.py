@@ -29,6 +29,7 @@ from app.schemas.asset import (
     AssetTransactionUpdate,
 )
 from app.services import asset_service
+from app.services.asset_type import holding_unit_price, type_from_quote
 
 logger = logging.getLogger(__name__)
 
@@ -379,13 +380,13 @@ async def buy_into_holding(
             user_id=user_id,
             workspace_id=workspace_id,
             name=data.name or quote.name or ticker,
-            type=_type_from_quote(quote.quote_type),
+            type=type_from_quote(quote.quote_type, ticker),
             currency=quote.currency,
             valuation_method="market_price",
             group_id=data.group_id,
             ticker=ticker,
             ticker_exchange=quote.exchange,
-            last_price=Decimal(str(quote.price)),
+            last_price=holding_unit_price(ticker, Decimal(str(quote.price))),
             last_price_at=datetime.now(timezone.utc),
             logo_url=quote.logo_url,
             source="yfinance",
@@ -415,14 +416,7 @@ async def buy_into_holding(
     return result
 
 
-def _type_from_quote(quote_type: Optional[str]) -> str:
+def _type_from_quote(quote_type: Optional[str], symbol: Optional[str] = None) -> str:
     """Mirror the frontend's quoteType → asset type mapping so a holding
     created from the ledger lands on a sensible icon/type."""
-    mapping = {
-        "EQUITY": "stock",
-        "ETF": "etf",
-        "CRYPTOCURRENCY": "crypto",
-        "MUTUALFUND": "fund",
-        "INDEX": "fund",
-    }
-    return mapping.get((quote_type or "").upper(), "investment")
+    return type_from_quote(quote_type, symbol)

@@ -19,7 +19,13 @@ from app.providers.market_price import (
     get_market_price_provider,
 )
 from app.schemas.asset import AssetCreate, AssetUpdate, AssetValueCreate, AssetRead, AssetValueRead
-from app.services.fx_rate_service import convert, stamp_primary_amount
+from app.services.asset_type import (
+    holding_unit_price,
+    honors_holding_currency,
+    is_physical_metal_oz_ticker,
+    normalize_gold_karat,
+)
+from app.services.fx_rate_service import convert, get_rate, stamp_primary_amount
 
 logger = logging.getLogger(__name__)
 
@@ -130,11 +136,27 @@ def _asset_to_read(
     # held units, so it doubles as `total_invested`. `average_price != None`
     # is the signal that the holding is driven by the transactions ledger.
     is_ledger = asset.average_price is not None
-    total_invested = (
-        float(asset.purchase_price)
-        if is_ledger and asset.purchase_price is not None
-        else None
-    )
+    if is_ledger and asset.purchase_price is not None:
+        total_invested = float(asset.purchase_price)
+        avg_price = float(asset.average_price)
+    elif (
+        asset.source == "kite"
+        and asset.average_price is None
+        and asset.purchase_price is not None
+        and asset.units
+    ):
+        # Legacy Kite rows stored per-unit average in purchase_price.
+        avg_price = float(asset.purchase_price)
+        total_invested = avg_price * float(asset.units)
+    else:
+        total_invested = None
+        avg_price = float(asset.average_price) if asset.average_price is not None else None
+
+    last_price = float(asset.last_price) if asset.last_price is not None else None
+    if last_price is None and current_value is not None and asset.units:
+        units = float(asset.units)
+        if units > 0:
+            last_price = current_value / units
 
     return AssetRead(
         id=asset.id,
@@ -164,13 +186,14 @@ def _asset_to_read(
         group_id=asset.group_id,
         ticker=asset.ticker,
         ticker_exchange=asset.ticker_exchange,
-        last_price=float(asset.last_price) if asset.last_price is not None else None,
+        last_price=last_price,
         last_price_at=asset.last_price_at,
         logo_url=asset.logo_url,
-        average_price=float(asset.average_price) if asset.average_price is not None else None,
+        average_price=avg_price,
         total_invested=total_invested,
         realized_gain=float(asset.realized_gain) if asset.realized_gain is not None else None,
         transaction_count=transaction_count,
+        karat=asset.karat,
     )
 
 
@@ -414,6 +437,31 @@ async def get_asset(
     return _asset_to_read(asset, latest, count, tx_count or 0)
 
 
+async def quoted_holding_unit_price(
+    session: AsyncSession,
+    ticker: Optional[str],
+    quote_price: Decimal,
+    quote_currency: str,
+    holding_currency: str,
+    karat: Optional[int] = None,
+) -> Decimal:
+    """Per-unit price in the holding currency.
+
+    Physical metal quotes are first converted from troy ounces to grams, then
+    FX-converted when the user picked a currency other than the ticker's.
+    Gold karats scale the 24K spot gram price.
+    """
+    unit = holding_unit_price(ticker, quote_price, karat=karat)
+    if not honors_holding_currency(None, ticker):
+        return unit
+    from_ccy = (quote_currency or "").upper()
+    to_ccy = (holding_currency or "").upper()
+    if not from_ccy or not to_ccy or from_ccy == to_ccy:
+        return unit
+    rate = await get_rate(session, from_ccy, to_ccy)
+    return unit * rate
+
+
 async def create_asset(
     session: AsyncSession,
     workspace_id: uuid.UUID,
@@ -439,22 +487,36 @@ async def create_asset(
                 detail="units (quantity) must be > 0 for market_price assets",
             )
         provider = market_provider or get_market_price_provider()
-        quote = await provider.get_quote(data.ticker)
+        quote = await provider.get_quote(data.ticker, currency=data.currency)
         if quote is None:
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
                 detail=f"Could not fetch quote for {data.ticker}",
             )
 
+    karat = normalize_gold_karat(data.karat, data.type)
+
+    if quote is not None and honors_holding_currency(data.type, data.ticker):
+        currency = (data.currency or quote.currency).upper()
+        unit_price = await quoted_holding_unit_price(
+            session, data.ticker, Decimal(str(quote.price)), quote.currency, currency, karat=karat
+        )
+    elif quote is not None:
+        currency = quote.currency
+        unit_price = holding_unit_price(data.ticker, Decimal(str(quote.price)), karat=karat)
+    else:
+        currency = data.currency
+        unit_price = None
+
     asset = Asset(
         user_id=user_id,
         workspace_id=workspace_id,
         name=data.name,
         type=data.type,
-        # For market_price, the quote's currency is authoritative — a user
-        # entering PETR4.SA from an English-language form shouldn't end up
-        # with USD just because the dropdown defaulted to USD.
-        currency=quote.currency if quote else data.currency,
+        # Stocks/ETFs stay on the quote currency so a PETR4.SA holding is
+        # BRL. Physical metal lets the user pick INR, EUR, etc. and we
+        # FX-convert the live ounce quote into that currency per gram.
+        currency=currency,
         units=data.units,
         valuation_method=data.valuation_method,
         purchase_date=data.purchase_date,
@@ -471,13 +533,18 @@ async def create_asset(
         group_id=data.group_id,
         ticker=data.ticker.upper() if data.ticker else None,
         ticker_exchange=data.ticker_exchange or (quote.exchange if quote else None),
-        last_price=Decimal(str(quote.price)) if quote else None,
+        last_price=unit_price,
         last_price_at=datetime.now(timezone.utc) if quote else None,
         logo_url=quote.logo_url if quote else None,
+        karat=karat,
         source=(
             "tesouro_direto"
             if quote and quote.exchange == "Tesouro Direto"
-            else ("yfinance" if data.valuation_method == "market_price" else "manual")
+            else (
+                "goldpricez"
+                if quote and quote.exchange == "GoldPriceZ"
+                else ("yfinance" if data.valuation_method == "market_price" else "manual")
+            )
         ),
     )
     session.add(asset)
@@ -485,13 +552,13 @@ async def create_asset(
 
     # Seed the first AssetValue from the live quote so the portfolio chart
     # has a starting data point without waiting for the scheduled refresh.
-    if data.valuation_method == "market_price" and quote is not None:
-        initial_amount = Decimal(str(quote.price)) * Decimal(str(data.units))
+    if data.valuation_method == "market_price" and quote is not None and unit_price is not None:
+        initial_amount = unit_price * Decimal(str(data.units))
         session.add(
             AssetValue(
                 asset_id=asset.id,
                 amount=initial_amount,
-                price=Decimal(str(quote.price)),
+                price=unit_price,
                 date=date.today(),
                 source="sync",
             )
@@ -546,7 +613,7 @@ async def create_asset(
         buy_price = (
             Decimal(str(data.unit_price))
             if data.unit_price is not None
-            else Decimal(str(quote.price))
+            else unit_price
         )
         session.add(
             AssetTransaction(
@@ -599,11 +666,15 @@ async def update_asset(
     if not asset:
         return None
 
+    old_currency = asset.currency
+    old_karat = asset.karat
     update_data = data.model_dump(exclude_unset=True)
     # Prevent changing valuation_method on existing assets
     update_data.pop("valuation_method", None)
     for key, value in update_data.items():
         setattr(asset, key, value)
+    if "karat" in update_data or "type" in update_data:
+        asset.karat = normalize_gold_karat(asset.karat, asset.type)
 
     # Regenerate growth-rule values if requested
     if regenerate_growth and asset.valuation_method == "growth_rule":
@@ -645,12 +716,24 @@ async def update_asset(
                 date_field="purchase_date",
             )
 
-    # If units change on a market-priced asset, rewrite today's AssetValue with
-    # the new (units × last_price). Without this, the portfolio chart keeps
-    # plotting the old position size even though the header and wallet totals
-    # (computed live) already reflect the new units — the two disagree until
-    # the next scheduled refresh overwrites today's row.
     if (
+        "currency" in update_data
+        and asset.valuation_method == "market_price"
+        and honors_holding_currency(asset.type, asset.ticker)
+        and asset.last_price is not None
+        and old_currency
+        and old_currency.upper() != (asset.currency or "").upper()
+    ):
+        rate = await get_rate(session, old_currency, asset.currency)
+        await _apply_price_to_asset(session, asset, Decimal(str(asset.last_price)) * rate)
+    elif (
+        "karat" in update_data
+        and asset.karat != old_karat
+        and asset.valuation_method == "market_price"
+        and asset.ticker
+    ):
+        await refresh_market_price_asset(session, asset)
+    elif (
         "units" in update_data
         and asset.valuation_method == "market_price"
         and asset.last_price is not None
@@ -1036,7 +1119,7 @@ async def refresh_market_price_asset(
 
     provider = market_provider or get_market_price_provider()
     try:
-        quote = await provider.get_quote(asset.ticker)
+        quote = await provider.get_quote(asset.ticker, currency=asset.currency)
     except MarketPriceRateLimitedError:
         # Let the scheduler see this explicitly so it can back off globally.
         raise
@@ -1047,7 +1130,18 @@ async def refresh_market_price_asset(
     if quote is None or quote.price is None:
         return False
 
-    await _apply_price_to_asset(session, asset, Decimal(str(quote.price)))
+    await _apply_price_to_asset(
+        session,
+        asset,
+        await quoted_holding_unit_price(
+            session,
+            asset.ticker,
+            Decimal(str(quote.price)),
+            quote.currency,
+            asset.currency,
+            karat=asset.karat,
+        ),
+    )
     # Opportunistic logo backfill: assets created before Brandfetch was
     # configured have no logo_url. On the next single-asset refresh (which
     # goes through the full get_quote → website lookup), stamp it in.
@@ -1136,7 +1230,14 @@ async def refresh_all_market_prices(
                 skipped += 1
             continue
 
-        await _apply_price_to_asset(session, asset, price)
+        quote_ccy = "USD" if is_physical_metal_oz_ticker(asset.ticker) else asset.currency
+        await _apply_price_to_asset(
+            session,
+            asset,
+            await quoted_holding_unit_price(
+                session, asset.ticker, price, quote_ccy, asset.currency, karat=asset.karat
+            ),
+        )
         refreshed += 1
 
     await session.commit()

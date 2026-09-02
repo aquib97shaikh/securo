@@ -27,7 +27,7 @@ class FakeProvider:
         self.latest_price_calls += 1
         return {s.upper(): (Decimal("100") if s.upper() in self.known else None) for s in symbols}
 
-    async def get_quote(self, symbol):
+    async def get_quote(self, symbol, currency=None):
         self.quote_calls += 1
         if symbol.upper() not in self.known:
             return None

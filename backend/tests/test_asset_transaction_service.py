@@ -26,6 +26,7 @@ from app.schemas.asset import (
 )
 from app.services import asset_transaction_service
 from app.services.asset_transaction_service import _recompute
+from app.services.asset_type import TROY_OUNCE_GRAMS
 
 
 # ---------------------------------------------------------------------------
@@ -115,7 +116,7 @@ class _FakeProvider(MarketPriceProvider):
     async def search(self, query: str, limit: int = 20) -> list[MarketSymbolMatch]:
         return []
 
-    async def get_quote(self, symbol: str) -> Optional[MarketSymbolQuote]:
+    async def get_quote(self, symbol: str, currency: Optional[str] = None) -> Optional[MarketSymbolQuote]:
         return self._quotes.get(symbol.upper())
 
     async def get_latest_prices(self, symbols: list[str]) -> dict[str, Optional[Decimal]]:
@@ -380,3 +381,26 @@ async def test_buy_into_holding_consolidates_by_ticker(session, test_workspace, 
         )
     ).scalars().all()
     assert len(all_vale) == 1
+
+
+@pytest.mark.asyncio
+async def test_buy_into_holding_maps_gold_futures_to_gold_type(session, test_workspace, test_user):
+    ounce_price = TROY_OUNCE_GRAMS * Decimal("100")
+    provider = _FakeProvider({
+        "GC=F": MarketSymbolQuote(
+            symbol="GC=F",
+            name="Gold",
+            exchange="CMX",
+            currency="USD",
+            price=float(ounce_price),
+            quote_type="FUTURE",
+        )
+    })
+    holding = await asset_transaction_service.buy_into_holding(
+        session, test_workspace.id, test_user.id,
+        AssetBuyCreate(ticker="GC=F", quantity=Decimal("10"), price=Decimal("95"), date=date(2026, 1, 1)),
+        market_provider=provider,
+    )
+    assert holding.type == "gold"
+    assert holding.last_price == pytest.approx(100.0)
+    assert holding.current_value == pytest.approx(1000.0)

@@ -6,6 +6,7 @@ import { toast } from 'sonner'
 import axios from 'axios'
 import { connections } from '@/lib/api'
 import { invalidateFinancialQueries } from '@/lib/invalidate-queries'
+import { readOAuthReturnTo } from '@/lib/use-connection-reconnect'
 import { Button } from '@/components/ui/button'
 import { Building2, ExternalLink } from 'lucide-react'
 
@@ -20,7 +21,7 @@ export default function OAuthCallbackPage() {
   const [params] = useSearchParams()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const code = params.get('code')
+  const code = params.get('code') ?? params.get('request_token')
   const state = params.get('state')
   const errorParam = params.get('error')
   const errorDescription = params.get('error_description')
@@ -35,12 +36,12 @@ export default function OAuthCallbackPage() {
           message: errorDescription || errorParam,
         }),
       )
-      navigate('/accounts', { replace: true })
+      navigate(readOAuthReturnTo('/accounts'), { replace: true })
       return
     }
     if (!code || !state) {
       toast.error(t('accounts.oauthCallback.missingState'))
-      navigate('/accounts', { replace: true })
+      navigate(readOAuthReturnTo('/accounts'), { replace: true })
       return
     }
     // The state token is single-use server-side, so React StrictMode's
@@ -58,7 +59,7 @@ export default function OAuthCallbackPage() {
         await queryClient.refetchQueries({ queryKey: ['connections'] })
         invalidateFinancialQueries(queryClient)
         toast.success(t('accounts.connected'))
-        navigate('/accounts', { replace: true })
+        navigate(readOAuthReturnTo('/accounts'), { replace: true })
       } catch (err) {
         if (axios.isAxiosError(err) && err.response?.status === 409) {
           const detail = err.response.data?.detail as RestrictedDetail | string | undefined
@@ -75,7 +76,7 @@ export default function OAuthCallbackPage() {
             : t('accounts.connectError')
         sessionStorage.removeItem(submitKey)
         toast.error(message)
-        navigate('/accounts', { replace: true })
+        navigate(readOAuthReturnTo('/accounts'), { replace: true })
       }
     })()
   }, [code, state, errorParam, errorDescription, navigate, queryClient, t, retrying])
@@ -114,7 +115,7 @@ export default function OAuthCallbackPage() {
             >
               {t('accounts.oauthCallback.retry')}
             </Button>
-            <Button variant="ghost" onClick={() => navigate('/accounts', { replace: true })}>
+            <Button variant="ghost" onClick={() => navigate(readOAuthReturnTo('/accounts'), { replace: true })}>
               {t('common.cancel')}
             </Button>
           </div>

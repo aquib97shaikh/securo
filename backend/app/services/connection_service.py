@@ -623,6 +623,28 @@ async def _sync_holdings(
                 await session.delete(emptied)
 
 
+def _apply_holding_market_quote(asset: Asset, holding: HoldingData) -> None:
+    """Cache the provider's latest per-unit quote on the asset row.
+
+    Synced holdings store total value in AssetValue; `last_price` is what
+    the holdings table uses for the Current Price column.
+    """
+    if holding.unit_price is None:
+        return
+    asset.last_price = holding.unit_price
+    meta = holding.metadata or {}
+    raw_date = meta.get("last_price_date")
+    if raw_date:
+        try:
+            asset.last_price_at = datetime.strptime(str(raw_date)[:10], "%Y-%m-%d").replace(
+                tzinfo=timezone.utc
+            )
+            return
+        except ValueError:
+            pass
+    asset.last_price_at = datetime.now(timezone.utc)
+
+
 async def _upsert_asset_from_holding(
     session: AsyncSession,
     asset: Optional[Asset],
@@ -657,7 +679,13 @@ async def _upsert_asset_from_holding(
             maturity_date=holding.maturity_date,
             external_metadata=holding.metadata,
             valuation_method="manual",
+            average_price=(
+                holding.purchase_price / holding.quantity
+                if holding.purchase_price is not None and holding.quantity
+                else None
+            ),
         )
+        _apply_holding_market_quote(asset, holding)
         session.add(asset)
         await session.flush()
         return asset
@@ -688,6 +716,8 @@ async def _upsert_asset_from_holding(
         asset.units = holding.quantity
     if holding.purchase_price is not None:
         asset.purchase_price = holding.purchase_price
+        if holding.quantity:
+            asset.average_price = holding.purchase_price / holding.quantity
     if holding.purchase_date:
         asset.purchase_date = holding.purchase_date
     if holding.isin:
@@ -696,6 +726,7 @@ async def _upsert_asset_from_holding(
         asset.ticker = holding.ticker
     if holding.maturity_date:
         asset.maturity_date = holding.maturity_date
+    _apply_holding_market_quote(asset, holding)
     return asset
 
 
