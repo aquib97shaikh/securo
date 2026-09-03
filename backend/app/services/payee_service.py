@@ -21,19 +21,44 @@ async def get_payees(
     type: Optional[str] = None,
     is_favorite: Optional[bool] = None,
 ) -> list[Payee]:
-    """List all payees in a workspace with transaction counts."""
+    """List all payees in a workspace with transaction counts and totals."""
     count_subq = (
         select(
             Transaction.payee_id,
             func.count(Transaction.id).label("tx_count"),
+            func.coalesce(
+                func.sum(
+                    case(
+                        (Transaction.type == "debit", Transaction.amount),
+                        else_=Decimal("0"),
+                    )
+                ),
+                Decimal("0"),
+            ).label("total_spent"),
+            func.coalesce(
+                func.sum(
+                    case(
+                        (Transaction.type == "credit", Transaction.amount),
+                        else_=Decimal("0"),
+                    )
+                ),
+                Decimal("0"),
+            ).label("total_received"),
         )
         .where(Transaction.payee_id.isnot(None))
         .group_by(Transaction.payee_id)
         .subquery()
     )
     tx_count = func.coalesce(count_subq.c.tx_count, 0)
+    total_spent = func.coalesce(count_subq.c.total_spent, Decimal("0"))
+    total_received = func.coalesce(count_subq.c.total_received, Decimal("0"))
     stmt = (
-        select(Payee, tx_count.label("transaction_count"))
+        select(
+            Payee,
+            tx_count.label("transaction_count"),
+            total_spent.label("total_spent"),
+            total_received.label("total_received"),
+        )
         .outerjoin(count_subq, Payee.id == count_subq.c.payee_id)
         .where(Payee.workspace_id == workspace_id)
     )
@@ -52,9 +77,10 @@ async def get_payees(
     stmt = stmt.order_by(Payee.name)
     result = await session.execute(stmt)
     payees = []
-    for row in result.all():
-        payee = row[0]
-        payee.transaction_count = row[1]
+    for payee, transaction_count, total_spent, total_received in result.all():
+        payee.transaction_count = transaction_count
+        payee.total_spent = total_spent
+        payee.total_received = total_received
         payees.append(payee)
     return payees
 
@@ -218,6 +244,8 @@ async def create_payee(
     await session.commit()
     await session.refresh(payee)
     payee.transaction_count = 0
+    payee.total_spent = Decimal("0")
+    payee.total_received = Decimal("0")
     return payee
 
 

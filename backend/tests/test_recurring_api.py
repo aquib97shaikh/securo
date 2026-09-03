@@ -1,5 +1,6 @@
 """Tests for recurring transactions API."""
 from datetime import date, timedelta
+from uuid import uuid4
 
 import pytest
 
@@ -440,3 +441,72 @@ async def test_weekend_adjustment_update_rejects_null_but_allows_omission(
         row for row in list_response.json() if row["id"] == recurring_id
     )
     assert listed["weekend_adjustment"] == "previous_friday"
+
+
+@pytest.mark.asyncio
+async def test_backfill_endpoint_generates(client, auth_headers, test_account):
+    create_resp = await client.post(
+        "/api/recurring-transactions",
+        json={
+            "description": "Backfill API",
+            "amount": 25.00,
+            "currency": "BRL",
+            "type": "debit",
+            "frequency": "monthly",
+            "start_date": "2026-01-01",
+            "account_id": str(test_account.id),
+        },
+        headers=auth_headers,
+    )
+    assert create_resp.status_code == 201
+    rec_id = create_resp.json()["id"]
+
+    gen_resp = await client.post(
+        f"/api/recurring-transactions/{rec_id}/backfill",
+        headers=auth_headers,
+    )
+    assert gen_resp.status_code == 200
+    generated = gen_resp.json()["generated"]
+    assert generated >= 1
+
+    list_resp = await client.get("/api/recurring-transactions", headers=auth_headers)
+    rec = next(r for r in list_resp.json() if r["id"] == rec_id)
+    assert rec["next_occurrence"] > date.today().isoformat()
+
+
+@pytest.mark.asyncio
+async def test_backfill_endpoint_404(client, auth_headers):
+    response = await client.post(
+        f"/api/recurring-transactions/{uuid4()}/backfill",
+        headers=auth_headers,
+    )
+    assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_backfill_endpoint_inactive_400(client, auth_headers, test_account):
+    create_resp = await client.post(
+        "/api/recurring-transactions",
+        json={
+            "description": "Backfill Inactive API",
+            "amount": 10.00,
+            "type": "debit",
+            "frequency": "monthly",
+            "start_date": "2026-01-01",
+            "account_id": str(test_account.id),
+        },
+        headers=auth_headers,
+    )
+    rec_id = create_resp.json()["id"]
+    await client.patch(
+        f"/api/recurring-transactions/{rec_id}",
+        json={"is_active": False},
+        headers=auth_headers,
+    )
+
+    response = await client.post(
+        f"/api/recurring-transactions/{rec_id}/backfill",
+        headers=auth_headers,
+    )
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Recurring transaction is inactive"

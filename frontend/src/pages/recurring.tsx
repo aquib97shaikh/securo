@@ -20,7 +20,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog'
 import type { Category, CategoryGroup, RecurringTransaction } from '@/types'
-import { Pencil, Trash2, Plus, RefreshCw, Info } from 'lucide-react'
+import { Pencil, Trash2, Plus, RefreshCw, Info, History } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { PageHeader } from '@/components/page-header'
 import { CategorySelect } from '@/components/category-select'
@@ -31,6 +31,8 @@ import { useWorkspace } from '@/contexts/workspace-context'
 import { formatCurrency } from '@/lib/format'
 
 const TH = 'text-xs font-medium text-muted-foreground py-3'
+
+type RecurringFormPayload = Partial<RecurringTransaction> & { backfill?: boolean }
 
 function SectionCard({ children }: { children: React.ReactNode }) {
   return (
@@ -146,10 +148,22 @@ function RecurringTab() {
     onError: () => toast.error(t('common.error')),
   })
 
+  const backfillMutation = useMutation({
+    mutationFn: (id: string) => recurringApi.backfill(id),
+    onSuccess: (data) => {
+      invalidateFinancialQueries(queryClient)
+      queryClient.invalidateQueries({ queryKey: ['recurring'] })
+      toast.success(t('recurring.generated', { count: data.generated }))
+    },
+    onError: () => toast.error(t('common.error')),
+  })
+
   const frequencyLabel = (f: string) => {
     const map: Record<string, string> = { monthly: t('recurring.monthly'), quarterly: t('recurring.quarterly'), weekly: t('recurring.weekly'), yearly: t('recurring.yearly') }
     return map[f] ?? f
   }
+
+  const today = localDateString()
 
   return (
     <>
@@ -185,7 +199,7 @@ function RecurringTab() {
                 <th className={`${TH} text-left w-28 hidden md:table-cell`}>{t('recurring.frequency')}</th>
                 <th className={`${TH} text-left w-32 hidden md:table-cell`}>{t('recurring.nextOccurrence')}</th>
                 <th className={`${TH} text-left w-24 hidden sm:table-cell`}>{t('recurring.status')}</th>
-                {canWrite && <th className={`${TH} pr-4 sm:pr-5 text-right w-24`}>{t('recurring.actions')}</th>}
+                {canWrite && <th className={`${TH} pr-4 sm:pr-5 text-right w-32`}>{t('recurring.actions')}</th>}
               </tr>
             </thead>
             <tbody>
@@ -224,6 +238,19 @@ function RecurringTab() {
                   {canWrite && (
                     <td className="py-3 pr-4 sm:pr-5">
                       <div className="flex items-center justify-end gap-1">
+                        <button
+                          className="p-1.5 rounded-md text-muted-foreground hover:text-primary hover:bg-primary/5 transition-colors disabled:opacity-40 disabled:pointer-events-none"
+                          onClick={() => backfillMutation.mutate(rt.id)}
+                          disabled={
+                            !rt.is_active
+                            || rt.start_date > today
+                            || backfillMutation.isPending
+                          }
+                          aria-label={t('recurring.backfill')}
+                          title={t('recurring.backfillUntilToday')}
+                        >
+                          <History size={13} />
+                        </button>
                         <button
                           className="p-1.5 rounded-md text-muted-foreground hover:text-primary hover:bg-primary/5 transition-colors"
                           onClick={() => { setEditing(rt); setDialogOpen(true) }}
@@ -267,11 +294,17 @@ function RecurringTab() {
               (category) => category.id === editing?.category_id
             )}
             accounts={accountsList ?? []}
-            onSave={(data) => {
-              if (editing) {
-                updateMutation.mutate({ id: editing.id, ...data })
-              } else {
-                createMutation.mutate(data)
+            onSave={async (data) => {
+              const { backfill, ...payload } = data
+              try {
+                const saved = editing
+                  ? await updateMutation.mutateAsync({ id: editing.id, ...payload })
+                  : await createMutation.mutateAsync(payload)
+                if (backfill && saved.id) {
+                  await backfillMutation.mutateAsync(saved.id)
+                }
+              } catch {
+                // mutation onError handlers already toast
               }
             }}
             onCancel={() => { setDialogOpen(false); setEditing(null) }}
@@ -307,7 +340,7 @@ function RecurringForm({
   categoryGroups: CategoryGroup[]
   currentCategory?: Category
   accounts: { id: string; name: string; display_name?: string | null }[]
-  onSave: (data: Partial<RecurringTransaction>) => void
+  onSave: (data: RecurringFormPayload) => void
   onCancel: () => void
   loading: boolean
 }) {
@@ -335,6 +368,10 @@ function RecurringForm({
   const [accountId, setAccountId] = useState(recurring?.account_id ?? sortedAccounts[0]?.id ?? '')
   const [isActive, setIsActive] = useState(recurring?.is_active ?? true)
   const [autoGenerate, setAutoGenerate] = useState(recurring?.auto_generate ?? true)
+  const today = localDateString()
+  const [backfillUntilToday, setBackfillUntilToday] = useState(
+    !recurring && startDate < today
+  )
 
   const selectClass = 'w-full border border-border rounded-lg px-3 py-2 text-sm bg-card text-foreground focus:outline-none focus:ring-2 focus:ring-primary'
 
@@ -356,7 +393,8 @@ function RecurringForm({
           account_id: accountId || null,
           is_active: isActive,
           auto_generate: autoGenerate,
-        } as Partial<RecurringTransaction>)
+          backfill: startDate <= today && backfillUntilToday,
+        } as RecurringFormPayload)
       }}
       className="space-y-4"
     >
@@ -417,7 +455,16 @@ function RecurringForm({
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2">
           <Label>{t('recurring.startDate')}</Label>
-          <DatePickerInput value={startDate} onChange={setStartDate} className="w-full justify-start" />
+          <DatePickerInput
+            value={startDate}
+            onChange={(value) => {
+              setStartDate(value)
+              if (!recurring) {
+                setBackfillUntilToday(value < today)
+              }
+            }}
+            className="w-full justify-start"
+          />
         </div>
         <div className="space-y-2">
           <Label>{t('recurring.endDate')}</Label>
@@ -464,6 +511,20 @@ function RecurringForm({
           <span className="block text-xs text-muted-foreground">{t('recurring.autoGenerateHelp')}</span>
         </span>
       </label>
+      {startDate <= today && (
+        <label className="flex items-start gap-2 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={backfillUntilToday}
+            onChange={(e) => setBackfillUntilToday(e.target.checked)}
+            className="h-4 w-4 mt-0.5 rounded border-border"
+          />
+          <span className="text-sm text-foreground">
+            {t('recurring.backfillUntilToday')}
+            <span className="block text-xs text-muted-foreground">{t('recurring.backfillUntilTodayHelp')}</span>
+          </span>
+        </label>
+      )}
       {recurring && (
         <label className="flex items-center gap-2 cursor-pointer">
           <input

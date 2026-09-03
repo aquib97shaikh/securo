@@ -84,6 +84,8 @@ class PayeeRead(BaseModel):
     tax_ids: list[TaxIdRead] = []
     created_at: datetime
     transaction_count: int = 0
+    total_spent: Decimal = Decimal("0")
+    total_received: Decimal = Decimal("0")
 
     model_config = ConfigDict(from_attributes=True)
 

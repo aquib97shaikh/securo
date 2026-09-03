@@ -225,60 +225,43 @@ def get_occurrences_in_range(
     return occurrences
 
 
-async def generate_pending(
-    session: AsyncSession, user_id: uuid.UUID, up_to: Optional[date] = None
-) -> int:
-    """Generate transactions for all pending recurring transactions up to a given date.
-    If up_to is None, defaults to today. This allows the dashboard to pre-generate
-    transactions for future months when the user navigates ahead.
-    Returns the count of transactions generated."""
-    cutoff = up_to or date.today()
+_MAX_BACKFILL_OCCURRENCES = 200
 
-    result = await session.execute(
-        select(RecurringTransaction)
-        .where(
-            RecurringTransaction.user_id == user_id,
-            RecurringTransaction.is_active == True,
-            RecurringTransaction.auto_generate == True,
-            or_(
-                and_(
-                    RecurringTransaction.weekend_adjustment == "previous_friday",
-                    RecurringTransaction.next_occurrence <= cutoff + timedelta(days=2),
-                ),
-                and_(
-                    RecurringTransaction.weekend_adjustment != "previous_friday",
-                    RecurringTransaction.next_occurrence <= cutoff,
-                ),
-            ),
-        )
-    )
-    recurring_list = list(result.scalars().all())
+
+async def _materialize_due(
+    session: AsyncSession,
+    user_id: uuid.UUID,
+    recurring: RecurringTransaction,
+    cutoff: date,
+    max_occurrences: Optional[int] = None,
+) -> int:
+    """Materialize due occurrences for one bill up to cutoff. Does not commit."""
+    if recurring.account_id is None:
+        return 0
 
     count = 0
-    for recurring in recurring_list:
-        # Legacy rows may exist with a null account_id from before account_id
-        # was required. Skip them rather than crashing on Transaction's NOT NULL
-        # constraint — the user should edit the recurring to fix it.
-        if recurring.account_id is None:
-            continue
-        # Generate while the effective date is due. The nominal pointer remains
-        # authoritative and is the only date used for schedule advancement and
-        # end-date evaluation.
-        while True:
-            effective_occurrence = adjust_weekend_date(
-                recurring.next_occurrence, recurring.weekend_adjustment
-            )
-            if effective_occurrence > cutoff:
-                break
-            if recurring.end_date and recurring.next_occurrence > recurring.end_date:
-                recurring.is_active = False
-                break
+    processed = 0
+    while True:
+        if max_occurrences is not None and processed >= max_occurrences:
+            break
+        effective_occurrence = adjust_weekend_date(
+            recurring.next_occurrence, recurring.weekend_adjustment
+        )
+        if effective_occurrence > cutoff:
+            break
+        if recurring.end_date and recurring.next_occurrence > recurring.end_date:
+            recurring.is_active = False
+            break
 
-            # If a real transaction (synced/imported/manual) already covers this
-            # occurrence, link it to the bill instead of writing a duplicate
-            # placeholder (issue #116). Otherwise materialize the placeholder,
-            # stamped with the recurring link so a later synced charge merges
-            # into it rather than duplicating.
+        # A rewind (backfill) can revisit months that already have a
+        # placeholder or a linked real charge. Skip those so a second
+        # click does not duplicate. Otherwise, if a real transaction
+        # already covers this occurrence, link it instead of writing a
+        # placeholder (issue #116).
+        already_covered = await recurring_match_service.occurrence_already_covered(
+            session, recurring, effective_occurrence
+        )
+        if not already_covered:
             existing_real = await recurring_match_service.find_real_tx_for_occurrence(
                 session, recurring, effective_occurrence
             )
@@ -323,15 +306,87 @@ async def generate_pending(
                 await stamp_primary_amount(session, user_id, transaction)
                 count += 1
 
-            # Advance to next occurrence
-            recurring.next_occurrence = _advance_date(
-                recurring.next_occurrence, recurring.frequency,
-                intended_day=recurring.day_of_month or recurring.start_date.day,
-            )
+        processed += 1
+        recurring.next_occurrence = _advance_date(
+            recurring.next_occurrence, recurring.frequency,
+            intended_day=recurring.day_of_month or recurring.start_date.day,
+        )
 
-            # Check again if past end_date after advancing
-            if recurring.end_date and recurring.next_occurrence > recurring.end_date:
-                recurring.is_active = False
+        if recurring.end_date and recurring.next_occurrence > recurring.end_date:
+            recurring.is_active = False
 
+    return count
+
+
+async def generate_pending(
+    session: AsyncSession, user_id: uuid.UUID, up_to: Optional[date] = None
+) -> int:
+    """Generate transactions for all pending recurring transactions up to a given date.
+    If up_to is None, defaults to today. This allows the dashboard to pre-generate
+    transactions for future months when the user navigates ahead.
+    Returns the count of transactions generated."""
+    cutoff = up_to or date.today()
+
+    result = await session.execute(
+        select(RecurringTransaction)
+        .where(
+            RecurringTransaction.user_id == user_id,
+            RecurringTransaction.is_active == True,
+            RecurringTransaction.auto_generate == True,
+            or_(
+                and_(
+                    RecurringTransaction.weekend_adjustment == "previous_friday",
+                    RecurringTransaction.next_occurrence <= cutoff + timedelta(days=2),
+                ),
+                and_(
+                    RecurringTransaction.weekend_adjustment != "previous_friday",
+                    RecurringTransaction.next_occurrence <= cutoff,
+                ),
+            ),
+        )
+    )
+    recurring_list = list(result.scalars().all())
+
+    count = 0
+    for recurring in recurring_list:
+        # Legacy rows may exist with a null account_id from before account_id
+        # was required. Skip them rather than crashing on Transaction's NOT NULL
+        # constraint — the user should edit the recurring to fix it.
+        if recurring.account_id is None:
+            continue
+        count += await _materialize_due(session, user_id, recurring, cutoff)
+
+    await session.commit()
+    return count
+
+
+async def backfill_recurring(
+    session: AsyncSession,
+    user_id: uuid.UUID,
+    workspace_id: uuid.UUID,
+    recurring_id: uuid.UUID,
+    up_to: Optional[date] = None,
+) -> int:
+    """Rewind one bill to start_date and materialize due occurrences through today.
+
+    ``up_to`` is for tests; the API leaves it unset so the cutoff is today.
+    Returns the count of new transaction rows (linked existing charges do not
+    count). Raises LookupError if the bill is missing, ValueError if it cannot
+    be backfilled.
+    """
+    recurring = await get_recurring_transaction(session, recurring_id, workspace_id)
+    if recurring is None:
+        raise LookupError("Recurring transaction not found")
+    if not recurring.is_active:
+        raise ValueError("Recurring transaction is inactive")
+    if recurring.account_id is None:
+        raise ValueError("Account is required")
+
+    recurring.next_occurrence = recurring.start_date
+    cutoff = up_to or date.today()
+    count = await _materialize_due(
+        session, user_id, recurring, cutoff,
+        max_occurrences=_MAX_BACKFILL_OCCURRENCES,
+    )
     await session.commit()
     return count

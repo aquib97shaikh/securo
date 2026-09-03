@@ -97,6 +97,23 @@ async def find_real_tx_for_occurrence(
     return _best_by_similarity(result.scalars(), recurring.description)
 
 
+async def occurrence_already_covered(
+    session: AsyncSession,
+    recurring: RecurringTransaction,
+    occurrence_date: date,
+) -> bool:
+    """True if this bill already has a linked or generated row for the occurrence."""
+    before, after = _match_window(recurring.frequency)
+    result = await session.execute(
+        select(Transaction.id).where(
+            Transaction.recurring_transaction_id == recurring.id,
+            Transaction.date >= occurrence_date - timedelta(days=before),
+            Transaction.date <= occurrence_date + timedelta(days=after),
+        ).limit(1)
+    )
+    return result.scalar_one_or_none() is not None
+
+
 async def find_placeholder_for_incoming(
     session: AsyncSession,
     account_id: uuid.UUID,

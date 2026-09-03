@@ -8,11 +8,13 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.account import Account
+from app.models.recurring_transaction import RecurringTransaction
 from app.models.transaction import Transaction
 from app.schemas.recurring_transaction import RecurringTransactionCreate, RecurringTransactionUpdate
 from app.services.recurring_transaction_service import (
     _advance_date,
     adjust_weekend_date,
+    backfill_recurring,
     create_recurring_transaction,
     delete_recurring_transaction,
     generate_pending,
@@ -811,3 +813,197 @@ async def test_generate_pending_weekend_adjustment_respects_nominal_end_date(
     await session.refresh(rec)
     assert rec.next_occurrence == date(2026, 9, 1)
     assert rec.is_active is False
+
+
+# ---------------------------------------------------------------------------
+# backfill_recurring
+# ---------------------------------------------------------------------------
+
+
+async def _create_backfill_bill(
+    session, test_workspace, test_user, account, **overrides
+):
+    data = RecurringTransactionCreate(
+        description=overrides.pop("description", "Backfill Sub"),
+        amount=overrides.pop("amount", Decimal("29.90")),
+        type=overrides.pop("type", "debit"),
+        frequency=overrides.pop("frequency", "monthly"),
+        start_date=overrides.pop("start_date", date(2025, 1, 1)),
+        account_id=account.id,
+        **overrides,
+    )
+    return await create_recurring_transaction(
+        session, test_workspace.id, test_user.id, data
+    )
+
+
+@pytest.mark.asyncio
+async def test_backfill_creates_through_today_only(
+    session: AsyncSession, test_user, test_workspace, test_account_for_recurring
+):
+    rec = await _create_backfill_bill(
+        session, test_workspace, test_user, test_account_for_recurring
+    )
+    rec.next_occurrence = date(2025, 9, 1)
+    await session.commit()
+
+    count = await backfill_recurring(
+        session, test_user.id, test_workspace.id, rec.id, up_to=date(2025, 3, 15)
+    )
+    assert count == 3
+
+    result = await session.execute(
+        select(Transaction).where(Transaction.recurring_transaction_id == rec.id)
+    )
+    dates = sorted(tx.date for tx in result.scalars())
+    assert dates == [date(2025, 1, 1), date(2025, 2, 1), date(2025, 3, 1)]
+
+    await session.refresh(rec)
+    assert rec.next_occurrence == date(2025, 4, 1)
+
+
+@pytest.mark.asyncio
+async def test_backfill_ignores_auto_generate_off(
+    session: AsyncSession, test_user, test_workspace, test_account_for_recurring
+):
+    rec = await _create_backfill_bill(
+        session, test_workspace, test_user, test_account_for_recurring,
+        auto_generate=False, description="Backfill Manual",
+    )
+    count = await backfill_recurring(
+        session, test_user.id, test_workspace.id, rec.id, up_to=date(2025, 3, 15)
+    )
+    assert count == 3
+
+
+@pytest.mark.asyncio
+async def test_backfill_second_call_creates_nothing(
+    session: AsyncSession, test_user, test_workspace, test_account_for_recurring
+):
+    rec = await _create_backfill_bill(
+        session, test_workspace, test_user, test_account_for_recurring,
+        description="Backfill Twice",
+    )
+    first = await backfill_recurring(
+        session, test_user.id, test_workspace.id, rec.id, up_to=date(2025, 3, 15)
+    )
+    second = await backfill_recurring(
+        session, test_user.id, test_workspace.id, rec.id, up_to=date(2025, 3, 15)
+    )
+    assert first == 3
+    assert second == 0
+    result = await session.execute(
+        select(Transaction).where(Transaction.recurring_transaction_id == rec.id)
+    )
+    assert len(result.scalars().all()) == 3
+
+
+@pytest.mark.asyncio
+async def test_backfill_links_existing_real_tx(
+    session: AsyncSession, test_user, test_workspace, test_account_for_recurring
+):
+    rec = await _create_backfill_bill(
+        session, test_workspace, test_user, test_account_for_recurring,
+        description="Backfill Netflix",
+        amount=Decimal("39.90"),
+    )
+    real = Transaction(
+        user_id=test_user.id,
+        workspace_id=test_workspace.id,
+        account_id=test_account_for_recurring.id,
+        description="Backfill Netflix",
+        amount=Decimal("39.90"),
+        currency="USD",
+        date=date(2025, 1, 1),
+        type="debit",
+        source="manual",
+        status="posted",
+    )
+    session.add(real)
+    await session.commit()
+
+    count = await backfill_recurring(
+        session, test_user.id, test_workspace.id, rec.id, up_to=date(2025, 3, 15)
+    )
+    assert count == 2
+    await session.refresh(real)
+    assert real.recurring_transaction_id == rec.id
+
+
+@pytest.mark.asyncio
+async def test_backfill_leaves_other_bills_untouched(
+    session: AsyncSession, test_user, test_workspace, test_account_for_recurring
+):
+    target = await _create_backfill_bill(
+        session, test_workspace, test_user, test_account_for_recurring,
+        description="Backfill Target",
+    )
+    other = await _create_backfill_bill(
+        session, test_workspace, test_user, test_account_for_recurring,
+        description="Backfill Other",
+        start_date=date(2025, 2, 1),
+    )
+
+    count = await backfill_recurring(
+        session, test_user.id, test_workspace.id, target.id, up_to=date(2025, 3, 15)
+    )
+    assert count == 3
+    await session.refresh(other)
+    assert other.next_occurrence == date(2025, 2, 1)
+    result = await session.execute(
+        select(Transaction).where(Transaction.recurring_transaction_id == other.id)
+    )
+    assert result.scalars().all() == []
+
+
+@pytest.mark.asyncio
+async def test_backfill_inactive_raises(
+    session: AsyncSession, test_user, test_workspace, test_account_for_recurring
+):
+    rec = await _create_backfill_bill(
+        session, test_workspace, test_user, test_account_for_recurring,
+        description="Backfill Inactive",
+    )
+    rec.is_active = False
+    await session.commit()
+
+    with pytest.raises(ValueError, match="Recurring transaction is inactive"):
+        await backfill_recurring(
+            session, test_user.id, test_workspace.id, rec.id, up_to=date(2025, 3, 15)
+        )
+
+
+@pytest.mark.asyncio
+async def test_backfill_missing_account_raises(
+    session: AsyncSession, test_user, test_workspace
+):
+    rec = RecurringTransaction(
+        user_id=test_user.id,
+        workspace_id=test_workspace.id,
+        account_id=None,
+        description="Backfill No Account",
+        amount=Decimal("10"),
+        currency="USD",
+        type="debit",
+        frequency="monthly",
+        start_date=date(2025, 1, 1),
+        next_occurrence=date(2025, 1, 1),
+        is_active=True,
+    )
+    session.add(rec)
+    await session.commit()
+
+    with pytest.raises(ValueError, match="Account is required"):
+        await backfill_recurring(
+            session, test_user.id, test_workspace.id, rec.id, up_to=date(2025, 3, 15)
+        )
+
+
+@pytest.mark.asyncio
+async def test_backfill_unknown_id_raises_lookup(
+    session: AsyncSession, test_user, test_workspace
+):
+    with pytest.raises(LookupError):
+        await backfill_recurring(
+            session, test_user.id, test_workspace.id, uuid.uuid4(), up_to=date(2025, 3, 15)
+        )

@@ -76,6 +76,23 @@ async def test_list_payees(client: AsyncClient, auth_headers):
     assert len(data) == 2
     names = {p["name"] for p in data}
     assert names == {"Alpha", "Beta"}
+    assert all(float(p["total_spent"]) == 0 for p in data)
+    assert all(float(p["total_received"]) == 0 for p in data)
+
+
+@pytest.mark.asyncio
+async def test_list_payees_includes_spent_and_received(
+    client: AsyncClient, auth_headers, session: AsyncSession, test_user: User,
+):
+    payee = await _create_payee(client, auth_headers, "Vendor")
+    await _make_account_and_tx(session, test_user, payee["id"], Decimal("80"), "debit")
+    await _make_account_and_tx(session, test_user, payee["id"], Decimal("20"), "credit")
+
+    resp = await client.get("/api/payees", headers=auth_headers)
+    assert resp.status_code == 200
+    row = next(p for p in resp.json() if p["name"] == "Vendor")
+    assert float(row["total_spent"]) == 80.0
+    assert float(row["total_received"]) == 20.0
 
 
 @pytest.mark.asyncio

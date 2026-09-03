@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useDisplayLocale, useDateLocale } from '@/hooks/use-display-locale'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -51,6 +51,13 @@ import { useWorkspace } from '@/contexts/workspace-context'
 import type { Payee } from '@/types'
 import { formatCurrency } from '@/lib/format'
 import { payeeErrorMessage } from '@/lib/payee-error-message'
+import { payeeNetAmount, summarizePayeeNets } from '@/lib/payee-nets'
+
+function payeeNetClass(net: number): string {
+  if (net > 0) return 'text-rose-500'
+  if (net < 0) return 'text-emerald-600'
+  return 'text-muted-foreground'
+}
 
 export default function PayeesPage() {
   const { t } = useTranslation()
@@ -350,6 +357,7 @@ export default function PayeesPage() {
   }
 
   const filtered = payeesList ?? []
+  const totals = useMemo(() => summarizePayeeNets(filtered), [filtered])
 
   const toggleSelectAll = () => {
     if (!filtered.length) return
@@ -557,6 +565,33 @@ export default function PayeesPage() {
         )}
       </div>
 
+      <div className="bg-card rounded-xl border border-border shadow-sm p-5 mb-4">
+        {isLoading ? (
+          <Skeleton className="h-16 w-full" />
+        ) : (
+          <div className="grid grid-cols-3 gap-4">
+            <div>
+              <p className="text-xs text-muted-foreground">{t('payees.youOwe')}</p>
+              <p className="text-lg font-bold text-rose-500 tabular-nums">
+                {mask(formatCurrency(totals.youOwe, userCurrency, locale))}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">{t('payees.owedToYou')}</p>
+              <p className="text-lg font-bold text-emerald-600 tabular-nums">
+                {mask(formatCurrency(totals.owedToYou, userCurrency, locale))}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">{t('payees.net')}</p>
+              <p className={cn('text-lg font-bold tabular-nums', payeeNetClass(totals.net))}>
+                {mask(formatCurrency(totals.net, userCurrency, locale))}
+              </p>
+            </div>
+          </div>
+        )}
+      </div>
+
       {/* Summary panel, above the table on purpose: a workspace whose payees
           were created by sync has hundreds of rows, and a panel rendered after
           the table opens below the fold, which reads as the click doing nothing. */}
@@ -668,12 +703,15 @@ export default function PayeesPage() {
                 <TableHead className="text-xs font-medium text-muted-foreground py-3 w-[32px]" />
                 <TableHead className="text-xs font-medium text-muted-foreground py-3">{t('payees.name')}</TableHead>
                 <TableHead className="hidden md:table-cell text-xs font-medium text-muted-foreground py-3 w-[120px]">{t('payees.type')}</TableHead>
+                <TableHead className="text-xs font-medium text-muted-foreground py-3 text-right w-[140px]">{t('payees.net')}</TableHead>
                 <TableHead className="text-xs font-medium text-muted-foreground py-3 text-right w-[120px]">{t('payees.transactionCount')}</TableHead>
                 {canWrite && <TableHead className="w-[100px]" />}
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filtered.map((payee) => (
+              {filtered.map((payee) => {
+                const net = payeeNetAmount(payee)
+                return (
                 <TableRow
                   key={payee.id}
                   className={`cursor-pointer hover:bg-muted border-b border-border last:border-0 ${
@@ -731,6 +769,11 @@ export default function PayeesPage() {
                     )}
                   </TableCell>
                   <TableCell className="py-2.5 text-right">
+                    <span className={cn('text-sm font-semibold tabular-nums', payeeNetClass(net))}>
+                      {mask(formatCurrency(net, userCurrency, locale))}
+                    </span>
+                  </TableCell>
+                  <TableCell className="py-2.5 text-right">
                     <span className="text-sm tabular-nums text-muted-foreground">{payee.transaction_count}</span>
                   </TableCell>
                   {canWrite && (
@@ -759,10 +802,11 @@ export default function PayeesPage() {
                     </TableCell>
                   )}
                 </TableRow>
-              ))}
-              {filtered.length === 0 && (
+                )
+              })}
+                  {filtered.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={canWrite ? 6 : 4} className="text-center py-16 text-muted-foreground">
+                  <TableCell colSpan={canWrite ? 7 : 5} className="text-center py-16 text-muted-foreground">
                     {t('payees.empty')}
                   </TableCell>
                 </TableRow>

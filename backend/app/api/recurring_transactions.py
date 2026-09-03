@@ -79,3 +79,23 @@ async def generate_recurring_transactions(
 ):
     count = await recurring_transaction_service.generate_pending(session, ctx.user_id)
     return {"generated": count}
+
+
+@router.post("/{recurring_id}/backfill")
+async def backfill_recurring_transaction(
+    recurring_id: uuid.UUID,
+    ctx: WorkspaceContext = Depends(current_writable_workspace),
+    session: AsyncSession = Depends(get_async_session),
+):
+    try:
+        count = await recurring_transaction_service.backfill_recurring(
+            session, ctx.user_id, ctx.workspace.id, recurring_id
+        )
+    except LookupError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Recurring transaction not found",
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    return {"generated": count}

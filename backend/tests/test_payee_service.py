@@ -184,6 +184,36 @@ async def test_get_payees_includes_zero_transaction_payees(session: AsyncSession
     assert payees_by_id[orphan.id].transaction_count == 0  # type: ignore[attr-defined]
 
 
+@pytest.mark.asyncio
+async def test_get_payees_includes_spent_and_received(
+    session: AsyncSession, test_user, test_workspace
+):
+    payee = await create_payee(session, test_workspace.id, test_user.id, PayeeCreate(name="Net Shop"))
+    other = await create_payee(session, test_workspace.id, test_user.id, PayeeCreate(name="Other"))
+    account = await _make_account(session, test_user)
+
+    for amount, typ in [
+        (Decimal("100"), "debit"),
+        (Decimal("50"), "debit"),
+        (Decimal("30"), "credit"),
+    ]:
+        session.add(Transaction(
+            id=uuid.uuid4(), user_id=test_user.id, account_id=account.id,
+            description=typ, amount=amount, date=date.today(),
+            type=typ, source="manual", payee_id=payee.id,
+            created_at=datetime.now(timezone.utc),
+        ))
+    await session.commit()
+
+    payees = await get_payees(session, test_workspace.id)
+    by_name = {p.name: p for p in payees}
+
+    assert by_name["Net Shop"].total_spent == Decimal("150")  # type: ignore[attr-defined]
+    assert by_name["Net Shop"].total_received == Decimal("30")  # type: ignore[attr-defined]
+    assert by_name["Other"].total_spent == Decimal("0")  # type: ignore[attr-defined]
+    assert by_name["Other"].total_received == Decimal("0")  # type: ignore[attr-defined]
+
+
 # ---------------------------------------------------------------------------
 # get_or_create_payee
 # ---------------------------------------------------------------------------
