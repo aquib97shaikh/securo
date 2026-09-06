@@ -1,0 +1,236 @@
+{
+  "version": "1.0.0",
+  "policy_name": "Securo Deterministic Financial Guidance Policy",
+  "rules": {
+    "budget_overspend": {
+      "family": "budget_control",
+      "action_type": "cap_budget",
+      "action_label": "Cap category budget",
+      "action_url": "/budgets",
+      "cooldown_days": 7,
+      "why_template": "Exceeding your planned category cap directly drains your month-end free cash flow and reduces what you can put toward your savings goals.",
+      "how_template": "Calculated by comparing actual posted expenses ({actual_amount}) against your set budget threshold ({budget_amount}). Pacing variance: +{overspend_amount}.",
+      "next_action_template": "Cap {category_name} spending for the remainder of this month or move budget from an underused category."
+    },
+    "budget_projected_overspend": {
+      "family": "budget_control",
+      "action_type": "weekly_guardrail",
+      "action_label": "Set weekly spending guardrail",
+      "action_url": "/budgets",
+      "cooldown_days": 7,
+      "why_template": "Your current daily spending velocity in {category_name} will breach your monthly cap before the month ends if left unchecked.",
+      "how_template": "Projected from your average daily spend ({actual_amount} across {days_elapsed} days) scaled to {days_in_month} days = {projected_amount} vs budget {budget_amount}.",
+      "next_action_template": "Set a weekly guardrail of {weekly_guardrail} for the next 2 weeks to stay within plan."
+    },
+    "budget_exhausted_early": {
+      "family": "budget_control",
+      "action_type": "cap_budget",
+      "action_label": "Pause non-essential spend",
+      "action_url": "/budgets",
+      "cooldown_days": 5,
+      "why_template": "Consuming {pct_used}% of your budget before mid-month leaves little flexibility for unexpected expenses in the second half of the month.",
+      "how_template": "{actual_amount} spent out of {budget_amount} by day {day_of_month} of {days_in_month}.",
+      "next_action_template": "Temporarily pause discretionary purchases in {category_name} until the next billing cycle."
+    },
+    "budget_surplus": {
+      "family": "budget_control",
+      "action_type": "reallocate_budget",
+      "action_label": "Reallocate unspent budget",
+      "action_url": "/budgets",
+      "cooldown_days": 14,
+      "why_template": "Unused budget headroom in one category can be redirected to cover overspent categories or accelerate a goal.",
+      "how_template": "Only {pct_used}% of your {category_name} budget used so far, leaving {surplus_amount} unspent with {days_left} days remaining.",
+      "next_action_template": "Move {surplus_amount} from {category_name} into your savings goals or emergency buffer."
+    },
+    "trend_surge_mom": {
+      "family": "budget_control",
+      "action_type": "review_transactions",
+      "action_label": "Review category transactions",
+      "action_url": "/transactions",
+      "cooldown_days": 10,
+      "why_template": "A steep month-over-month increase often signals recurring scope creep or untracked one-off splurges.",
+      "how_template": "Compared current month expenses ({current_amount}) with prior month ({prior_amount}), yielding a +{pct_increase}% increase (+{increase_amount}).",
+      "next_action_template": "Review recent transactions in {category_name} to confirm if the increase is intentional or can be trimmed."
+    },
+    "trend_surge_90d": {
+      "family": "budget_control",
+      "action_type": "tune_budget_cap",
+      "action_label": "Adjust category cap",
+      "action_url": "/budgets",
+      "cooldown_days": 14,
+      "why_template": "Consistently spending above your 90-day baseline indicates lifestyle creep or a category that needs a realistic budget cap.",
+      "how_template": "Projected monthly pace ({projected_amount}) is {pct_above_baseline}% above your 3-month rolling baseline ({baseline_90d}).",
+      "next_action_template": "Calibrate your budget cap for {category_name} to align with your real spending baseline."
+    },
+    "trend_category_drift": {
+      "family": "budget_control",
+      "action_type": "rebalance_categories",
+      "action_label": "Rebalance spending categories",
+      "action_url": "/reports",
+      "cooldown_days": 14,
+      "why_template": "Category drift shifts your overall spending mix without conscious budgeting decisions, crowding out priority goals.",
+      "how_template": "{category_name} represents {current_share_pct}% of total spending this month versus {baseline_share_pct}% historically.",
+      "next_action_template": "Rebalance your spending allocation to keep {category_name} within your desired proportion."
+    },
+    "recurring_price_increase": {
+      "family": "recurring_optimization",
+      "action_type": "review_subscription",
+      "action_label": "Review recurring charge",
+      "action_url": "/recurring",
+      "cooldown_days": 30,
+      "why_template": "Recurring cost increases accumulate silently over time, permanently eroding monthly savings without added utility.",
+      "how_template": "Detected {increase_pct}% increase from prior charge of {previous_amount} to new charge of {current_amount} (+{increase_amount}/cycle).",
+      "next_action_template": "Review this service: negotiate a lower tier, look for promotional rates, or cancel if unneeded."
+    },
+    "recurring_missed_payment": {
+      "family": "cash_flow_safety",
+      "action_type": "verify_bill",
+      "action_label": "Check bill payment status",
+      "action_url": "/recurring",
+      "cooldown_days": 3,
+      "why_template": "Missed bill payments can incur late penalties, interest charges, or impact service continuity and credit health.",
+      "how_template": "Scheduled payment of {amount} was due on {due_date} ({days_overdue} days ago) with no matching debit transaction posted.",
+      "next_action_template": "Verify whether this bill was paid manually or needs immediate settlement."
+    },
+    "recurring_bill_cluster": {
+      "family": "cash_flow_safety",
+      "action_type": "buffer_account",
+      "action_label": "Transfer cash to cover bills",
+      "action_url": "/accounts",
+      "cooldown_days": 7,
+      "why_template": "A heavy debit cluster in a short window creates overdraft risk if liquid cash does not comfortably cover the outflow.",
+      "how_template": "{bill_count} upcoming scheduled debits totaling {total_bills_amount} represent {drain_ratio_pct}% of liquid balance ({liquid_balance}).",
+      "next_action_template": "Ensure at least {total_bills_amount} is available in your debit account, or delay non-essential purchases."
+    },
+    "recurring_subscription_audit": {
+      "family": "recurring_optimization",
+      "action_type": "cancel_subscriptions",
+      "action_label": "Audit subscriptions",
+      "action_url": "/recurring",
+      "cooldown_days": 30,
+      "why_template": "Multiple concurrent subscriptions often contain underutilized services that quietly bleed money each month.",
+      "how_template": "{subscription_count} active recurring subscriptions identified, consuming a total of {total_monthly_cost} per month.",
+      "next_action_template": "Cancel at least 1 underutilized subscription to save an estimated 10-20% on monthly fixed overhead."
+    },
+    "cashflow_shortfall": {
+      "family": "cash_flow_safety",
+      "action_type": "deposit_buffer",
+      "action_label": "Top up account buffer",
+      "action_url": "/accounts",
+      "cooldown_days": 3,
+      "why_template": "Projected negative cash flow causes bounced debits, overdraft fees, and forced liquidations.",
+      "how_template": "Actual balance forecast: Starting cash {current_liquid_balance} minus scheduled recurring bills and baseline burn dips negative by {shortfall_amount} on {shortfall_date}.",
+      "next_action_template": "Transfer at least {shortfall_amount} into your primary account before {shortfall_date} to prevent overdraft."
+    },
+    "cashflow_safety_buffer_breached": {
+      "family": "cash_flow_safety",
+      "action_type": "delay_discretionary",
+      "action_label": "Postpone discretionary spend",
+      "action_url": "/planning",
+      "cooldown_days": 5,
+      "why_template": "Breaching your safety threshold leaves you vulnerable to unexpected emergencies before your next income cycle.",
+      "how_template": "Projected lowest balance is {min_projected_balance}, falling {buffer_deficit} short of your {safety_buffer} emergency buffer.",
+      "next_action_template": "Postpone non-essential shopping or dining until after your next paycheck."
+    },
+    "cashflow_low_balance_before_income": {
+      "family": "cash_flow_safety",
+      "action_type": "curb_daily_spend",
+      "action_label": "Curb daily spend until payday",
+      "action_url": "/planning",
+      "cooldown_days": 3,
+      "why_template": "Running on a razor-thin balance before payday forces reliance on credit cards or high-interest short-term debt.",
+      "how_template": "Projected cash drops to {min_balance_before_income} over the {days_to_income} days leading up to your next income on {next_income_date}.",
+      "next_action_template": "Limit spending strictly to essentials until your deposit of {next_income_amount} clears."
+    },
+    "savings_rate_decline": {
+      "family": "budget_control",
+      "action_type": "trim_spending",
+      "action_label": "Trim spending to restore savings",
+      "action_url": "/reports",
+      "cooldown_days": 14,
+      "why_template": "A dropping savings rate slows down wealth accumulation and delays your long-term financial independence milestones.",
+      "how_template": "Current savings rate is {current_savings_rate}%, down from {prior_savings_rate}% last month (-{rate_drop_pct}%).",
+      "next_action_template": "Reduce discretionary expenses by {recovery_amount} over the next 2 weeks to restore your target savings pace."
+    },
+    "savings_rate_surplus": {
+      "family": "goal_recovery",
+      "action_type": "fund_goal",
+      "action_label": "Transfer surplus to goals",
+      "action_url": "/goals",
+      "cooldown_days": 14,
+      "why_template": "Capturing spending windfalls immediately locks in savings before surplus cash is absorbed by lifestyle inflation.",
+      "how_template": "Savings rate rose by +{improvement_pct}% to reach {current_savings_rate}%, creating an extra {surplus_amount} in free cash.",
+      "next_action_template": "Deposit {surplus_amount} into your highest-priority savings goal or emergency fund."
+    },
+    "goal_overdue": {
+      "family": "goal_recovery",
+      "action_type": "extend_goal",
+      "action_label": "Adjust goal timeline",
+      "action_url": "/goals",
+      "cooldown_days": 14,
+      "why_template": "Overdue goals create planning debt; resetting realistic timelines keeps your financial strategy actionable and motivating.",
+      "how_template": "Target date {target_date} passed {days_overdue} days ago. Progress: {current_amount} of {target_amount} ({shortfall_amount} remaining).",
+      "next_action_template": "Extend target date by 3 to 6 months, or adjust target amount to match current feasibility."
+    },
+    "goal_behind_schedule": {
+      "family": "goal_recovery",
+      "action_type": "increase_pace",
+      "action_label": "Increase monthly contribution",
+      "action_url": "/goals",
+      "cooldown_days": 14,
+      "why_template": "Falling behind on savings goals compounds over time, making future target dates harder to achieve without drastic cuts.",
+      "how_template": "To reach {target_amount} by {target_date} from current balance {current_amount}, required monthly pace is {monthly_needed}.",
+      "next_action_template": "Increase monthly contribution for this goal to {monthly_needed} by reallocating from low-priority spending."
+    },
+    "merchant_concentration_high": {
+      "family": "habit_correction",
+      "action_type": "cap_merchant",
+      "action_label": "Set merchant guardrail",
+      "action_url": "/transactions",
+      "cooldown_days": 14,
+      "why_template": "Heavy merchant concentration often points to an unconscious spending routine or convenience premium that can be optimized.",
+      "how_template": "{merchant_name} captured {concentration_pct}% ({merchant_spend}) of all discretionary spending across {transaction_count} orders.",
+      "next_action_template": "Set a monthly cap on {merchant_name} or explore lower-cost alternatives."
+    },
+    "behavior_weekend_spike": {
+      "family": "habit_correction",
+      "action_type": "weekend_budget",
+      "action_label": "Set weekend spending limit",
+      "action_url": "/budgets",
+      "cooldown_days": 10,
+      "why_template": "Concentrated weekend spending surges can undo an entire week of disciplined budgeting in just two days.",
+      "how_template": "Weekend purchases totaled {weekend_spend} ({weekend_tx_count} orders), accounting for {weekend_pct}% of monthly discretionary spend.",
+      "next_action_template": "Set a dedicated weekly weekend allowance of {weekend_budget} to keep recreation spending intentional."
+    },
+    "behavior_delivery_spike": {
+      "family": "habit_correction",
+      "action_type": "delivery_cap",
+      "action_label": "Limit food delivery frequency",
+      "action_url": "/budgets",
+      "cooldown_days": 10,
+      "why_template": "Frequent app delivery incurs service fees, delivery tips, and menu markups that inflate food costs by 30-50%.",
+      "how_template": "Accumulated {delivery_spend} across {order_count} orders (average {avg_order_size} per order).",
+      "next_action_template": "Cap delivery orders to 1-2 times per week or meal-prep convenience staples."
+    },
+    "behavior_payday_splurge": {
+      "family": "habit_correction",
+      "action_type": "automate_savings",
+      "action_label": "Pay yourself first on payday",
+      "action_url": "/goals",
+      "cooldown_days": 14,
+      "why_template": "Splurging immediately after getting paid drains liquidity early, causing artificial end-of-month cash pinches.",
+      "how_template": "{splurge_pct}% of your {income_amount} deposit was spent within 72 hours on non-essential purchases.",
+      "next_action_template": "Set up an automatic goal transfer on payday so your savings are safeguarded before discretionary spending starts."
+    },
+    "statistical_spending_anomaly": {
+      "family": "habit_correction",
+      "action_type": "verify_transaction",
+      "action_label": "Review anomalous transaction",
+      "action_url": "/transactions",
+      "cooldown_days": 7,
+      "why_template": "Outlier transactions warrant verification to rule out billing errors, duplicate charges, or unbudgeted impulse buys.",
+      "how_template": "Transaction of {transaction_amount} is {z_score} standard deviations above your 90-day average transaction size of {mean_amount}.",
+      "next_action_template": "Confirm this charge: check receipt, verify no recurring subscription was billed incorrectly, and add notes."
+    }
+  }
+}
