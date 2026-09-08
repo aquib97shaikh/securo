@@ -260,10 +260,11 @@ async def get_number_format(session: AsyncSession) -> str:
 
     Global app setting controlling thousands/decimal separators (and, on the
     frontend, the locale used for date display). One of 'auto', 'comma_dot'
-    (1,000.00), 'dot_comma' (1.000,00) or 'space_comma' (1 000,00). Defaults to
-    'auto', which derives the format from the user's display currency."""
+    (1,000.00), 'dot_comma' (1.000,00), 'space_comma' (1 000,00) or 'indian'
+    (12,34,567.89). Defaults to 'auto', which derives the format from the
+    user's display currency."""
     setting = await get_app_setting(session, "number_format")
-    if setting and setting.value in ("auto", "comma_dot", "dot_comma", "space_comma"):
+    if setting and setting.value in ("auto", "comma_dot", "dot_comma", "space_comma", "indian"):
         return setting.value
     return "auto"
 

@@ -8,11 +8,12 @@ import { useAuth } from '@/contexts/auth-context'
 import { useCollectionFilter } from '@/contexts/collection-filter-context'
 import { useWorkspace } from '@/contexts/workspace-context'
 import { CollectionSelector } from '@/components/collection-selector'
-import { auth as authApi, admin as adminApi } from '@/lib/api'
+import { auth as authApi, admin as adminApi, guidance as guidanceApi } from '@/lib/api'
 import { resolveSupportedLang } from '@/lib/i18n'
 import { OnboardingTour } from '@/components/onboarding-tour'
 import { useTheme } from 'next-themes'
 import { accounts as accountsApi } from '@/lib/api'
+import { ContextualGuidancePanel } from '@/components/guidance/contextual-guidance-panel'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import {
@@ -48,6 +49,8 @@ import {
   Shield,
   ShieldCheck,
   Fingerprint,
+  Info,
+  PanelRight,
 } from 'lucide-react'
 import { usePrivacyMode } from '@/hooks/use-privacy-mode'
 import { ChangePasswordDialog } from '@/components/change-password-dialog'
@@ -106,39 +109,47 @@ export function AppLayout() {
   useCommandPaletteHotkey(setPaletteOpen)
   const { agentsEnabled } = useFeatureFlags()
   const { hasModule, isLoading: workspaceLoading, canWrite } = useWorkspace()
-  // The chat is offered only to members who can write. Sending a message
-  // reaches a tool set that persists — `propose_create_transaction` and its
-  // siblings — so the backend refuses it for a read-only role. Showing the
-  // panel anyway would put a raw `403: {"detail":"Read-only role"}` in front
-  // of the user, which is what happened before this guard.
-  //
-  // This costs a viewer the ability to *ask* questions, which is a real use
-  // case. Restoring it means making the agent's tools role-aware so a
-  // read-only session only exposes the reading ones; then this becomes
-  // `agentsEnabled` again.
+  const guidanceAvailable = hasModule('guidance')
+  const [guidanceOpen, setGuidanceOpen] = useState(false)
+
+  const toggleGuidance = useCallback(() => {
+    setGuidanceOpen((prev) => !prev)
+  }, [])
+
+  // Guidance data for the global alert badge
+  const { data: guidanceData } = useQuery({
+    queryKey: ['guidance-insights'],
+    queryFn: () => guidanceApi.getGuidance(),
+    staleTime: 1000 * 60 * 3,
+    enabled: guidanceAvailable,
+  })
+  const urgentCount = guidanceData?.summary?.urgent_count ?? 0
+  const activeGuidanceCount = guidanceData?.summary?.total_active ?? 0
+
+  // The chat is offered only to members who can write.
   const chatAvailable = agentsEnabled && canWrite
   const localAuthEnabled = useLocalAuthEnabled()
 
+  // ⌘G / Ctrl+G toggles the contextual guidance panel from anywhere.
   // ⌘J / Ctrl+J toggles the global slide-over chat from anywhere.
-  // Distinct from ⌘K (command palette) so users can have both open.
-  // Gated on agentsEnabled so the hotkey is a no-op when the feature is
-  // off — keeps ⌘J free for browsers/other tools.
   useEffect(() => {
     adminApi.defaultColors().then(({ light, dark }) => {
       setThemeBasedOnSystem(light, dark, resolvedTheme)
     }).catch(() => {})
     
-    if (!chatAvailable) return
     const handler = (e: KeyboardEvent) => {
       const isMod = e.metaKey || e.ctrlKey
-      if (isMod && (e.key === 'j' || e.key === 'J')) {
+      if (isMod && (e.key === 'g' || e.key === 'G')) {
+        e.preventDefault()
+        toggleGuidance()
+      } else if (chatAvailable && isMod && (e.key === 'j' || e.key === 'J')) {
         e.preventDefault()
         setChatOpen((prev) => !prev)
       }
     }
     document.addEventListener('keydown', handler)
     return () => document.removeEventListener('keydown', handler)
-  }, [chatAvailable, resolvedTheme])
+  }, [chatAvailable, resolvedTheme, toggleGuidance])
   // The "Agents" management page used to live in the sidebar, but it's
   // a configuration surface (KB upload, providers, default selection),
   // not a daily destination. Moved to the user menu (Change password,
@@ -242,6 +253,22 @@ export function AppLayout() {
           >
             {isDark ? <Sun size={18} /> : <Moon size={18} />}
           </button>
+          {/* Contextual page information & guidance trigger */}
+          <button
+            onClick={() => setGuidanceOpen(true)}
+            className="relative text-sidebar-muted hover:text-sidebar-foreground transition-colors p-1"
+            title={`Page Info & Tips (${isMac ? '⌘G' : 'Ctrl+G'})`}
+            aria-label="Page Information"
+          >
+            <Info size={18} />
+            {activeGuidanceCount > 0 && guidanceAvailable && (
+              <span
+                className={`absolute top-0 right-0 h-2 w-2 rounded-full ${
+                  urgentCount > 0 ? 'bg-rose-500 ring-2 ring-sidebar' : 'bg-primary'
+                }`}
+              />
+            )}
+          </button>
           {/* AI chat — opens the global slide-over (also reachable via
               ⌘J). Sits next to the theme toggle so the icon is always
               within thumb reach on mobile too. */}
@@ -324,6 +351,7 @@ export function AppLayout() {
                   <Bot size={16} />
                 </button>
               )}
+
               <button
                 onClick={toggleTheme}
                 className="text-sidebar-muted hover:text-sidebar-foreground transition-colors p-1 rounded-md hover:bg-sidebar-accent"
@@ -517,8 +545,44 @@ export function AppLayout() {
         </aside>
 
         {/* Main content */}
-        <main className="flex-1 min-h-screen overflow-x-hidden lg:ml-60">
-          <div className="p-6 max-w-7xl mx-auto">
+        <main
+          className={cn(
+            'flex-1 min-h-screen overflow-x-hidden lg:ml-60 relative transition-all duration-200',
+            guidanceOpen && 'xl:mr-[420px]',
+          )}
+        >
+          {/* Right-aligned collapsible button for Contextual Information / Guidance Panel */}
+          <div
+            className={cn(
+              'fixed top-3.5 z-50 hidden lg:flex items-center gap-2 transition-all duration-200',
+              guidanceOpen ? 'right-[430px]' : 'right-4',
+            )}
+          >
+            <button
+              type="button"
+              onClick={toggleGuidance}
+              className={cn(
+                'group relative inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-medium shadow-sm backdrop-blur-md transition-all hover:scale-[1.02] active:scale-[0.98]',
+                guidanceOpen
+                  ? 'border-primary/40 bg-card text-primary shadow hover:bg-accent'
+                  : 'border-border/80 bg-card/90 hover:bg-accent text-foreground hover:border-border',
+              )}
+              title={`Page Information & Tips (${isMac ? '⌘G' : 'Ctrl+G'})`}
+              aria-label="Toggle Page Information Panel"
+            >
+              <PanelRight size={14} className={guidanceOpen ? 'text-primary' : 'text-muted-foreground group-hover:text-foreground transition-colors'} />
+              <span className={guidanceOpen ? 'text-xs text-primary font-semibold' : 'text-xs text-muted-foreground group-hover:text-foreground transition-colors'}>Info</span>
+              {activeGuidanceCount > 0 && guidanceAvailable && (
+                <span
+                  className={`h-2 w-2 rounded-full ${
+                    urgentCount > 0 ? 'bg-rose-500 animate-pulse' : 'bg-primary'
+                  }`}
+                />
+              )}
+            </button>
+          </div>
+
+          <div className="p-4 sm:p-6 max-w-7xl mx-auto w-full transition-all">
             {/* Active-collection filter (issue #105): sticky bar above the
                 content so the scope is visible right where the data is. */}
             <CollectionSelector variant="header" />
@@ -526,6 +590,12 @@ export function AppLayout() {
           </div>
         </main>
       </div>
+
+      {/* On-demand slide-over general information & guidance drawer */}
+      <ContextualGuidancePanel
+        open={guidanceOpen}
+        onClose={() => setGuidanceOpen(false)}
+      />
 
       {showTour && <OnboardingTour onComplete={handleTourComplete} />}
       {localAuthEnabled && (

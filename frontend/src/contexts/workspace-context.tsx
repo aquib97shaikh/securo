@@ -112,8 +112,16 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     [current],
   )
   const hasModule = useCallback(
-    (id: ModuleId) => enabledModules.includes(id),
-    [enabledModules],
+    (id: ModuleId) => {
+      if (id === 'guidance') {
+        return Boolean(user?.preferences?.guidance_enabled)
+      }
+      if (id === 'planning') {
+        return Boolean(user?.preferences?.planning_enabled)
+      }
+      return enabledModules.includes(id)
+    },
+    [enabledModules, user?.preferences],
   )
 
   return (

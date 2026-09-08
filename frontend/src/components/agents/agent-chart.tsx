@@ -1,5 +1,6 @@
 import { memo } from 'react'
 import { useTranslation } from 'react-i18next'
+import { useDisplayLocale } from '@/hooks/use-display-locale'
 import {
   Area,
   AreaChart,
@@ -17,7 +18,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import { formatCurrency } from '@/lib/format'
+import { formatCompactCurrency, formatCompactNumber, formatCurrency } from '@/lib/format'
 
 /**
  * In-chat chart, rendered when an assistant message contains a fenced
@@ -87,11 +88,11 @@ const tooltipStyle: React.CSSProperties = {
   fontSize: 12,
 }
 
-function formatY(v: number | string | undefined | null, currency?: string): string {
+function formatY(v: number | string | undefined | null, currency: string | undefined, locale: string): string {
   if (v == null) return ''
   if (typeof v === 'string') return v
-  if (currency) return formatCurrency(v, currency, undefined)
-  return new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 }).format(v)
+  if (currency) return formatCurrency(v, currency, locale)
+  return new Intl.NumberFormat(locale, { maximumFractionDigits: 2 }).format(v)
 }
 
 /**
@@ -99,13 +100,13 @@ function formatY(v: number | string | undefined | null, currency?: string): stri
  * actually fit in the axis gutter. Tooltips still get the full
  * precision via formatY().
  */
-function formatYAxis(v: number | string | undefined | null, currency?: string): string {
+function formatYAxis(v: number | string | undefined | null, currency: string | undefined, locale: string): string {
   if (v == null) return ''
   if (typeof v === 'string') return v
   if (Math.abs(v) < 1000) {
     if (currency) {
       try {
-        return new Intl.NumberFormat(undefined, {
+        return new Intl.NumberFormat(locale, {
           style: 'currency',
           currency,
           minimumFractionDigits: 0,
@@ -115,28 +116,15 @@ function formatYAxis(v: number | string | undefined | null, currency?: string): 
         return `${currency} ${v.toFixed(0)}`
       }
     }
-    return new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 }).format(v)
+    return new Intl.NumberFormat(locale, { maximumFractionDigits: 0 }).format(v)
   }
-  if (currency) {
-    try {
-      return new Intl.NumberFormat(undefined, {
-        style: 'currency',
-        currency,
-        notation: 'compact',
-        maximumFractionDigits: 1,
-      }).format(v)
-    } catch {
-      return `${currency} ${v}`
-    }
-  }
-  return new Intl.NumberFormat(undefined, {
-    notation: 'compact',
-    maximumFractionDigits: 1,
-  }).format(v)
+  if (currency) return formatCompactCurrency(v, currency, locale)
+  return formatCompactNumber(v, locale)
 }
 
 function AgentChartImpl({ spec }: Props) {
   const { t } = useTranslation()
+  const locale = useDisplayLocale()
   if (!spec || !Array.isArray(spec.data) || spec.data.length === 0) {
     return (
       <div className="my-3 rounded-md border border-dashed border-border px-3 py-4 text-xs text-muted-foreground text-center">
@@ -162,7 +150,7 @@ function AgentChartImpl({ spec }: Props) {
       )}
       <div className="h-[260px] px-2 pt-3 pb-2">
         <ResponsiveContainer width="100%" height="100%">
-          {renderChart(spec.type, spec.data, seriesWithColor, spec.currency)}
+          {renderChart(spec.type, spec.data, seriesWithColor, spec.currency, locale)}
         </ResponsiveContainer>
       </div>
     </figure>
@@ -175,7 +163,8 @@ function renderChart(
   type: ChartType,
   data: Record<string, unknown>[],
   series: ResolvedSeries[],
-  currency?: string,
+  currency: string | undefined,
+  locale: string,
 ) {
   if (type === 'pie') {
     // Pie expects { name, value } shape. Map a friendly fallback.
@@ -201,7 +190,7 @@ function renderChart(
         </Pie>
         <Tooltip
           contentStyle={tooltipStyle}
-          formatter={(v) => formatY(v as number | string | undefined, currency)}
+          formatter={(v) => formatY(v as number | string | undefined, currency, locale)}
         />
         <Legend wrapperStyle={{ fontSize: 11 }} />
       </PieChart>
@@ -221,7 +210,7 @@ function renderChart(
         interval="preserveStartEnd"
       />
       <YAxis
-        tickFormatter={(v) => formatYAxis(v, currency)}
+        tickFormatter={(v) => formatYAxis(v, currency, locale)}
         tick={{ fontSize: 10, fill: 'var(--muted-foreground)' }}
         axisLine={false}
         tickLine={false}
@@ -230,7 +219,7 @@ function renderChart(
       />
       <Tooltip
         contentStyle={tooltipStyle}
-        formatter={(v, name) => [formatY(v as number | string | undefined, currency), String(name ?? '')]}
+        formatter={(v, name) => [formatY(v as number | string | undefined, currency, locale), String(name ?? '')]}
       />
       {series.length > 1 && <Legend wrapperStyle={{ fontSize: 11 }} />}
       {series.map((s) => {

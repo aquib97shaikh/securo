@@ -11,6 +11,7 @@ import { AdminRoute } from '@/components/admin-route'
 import { AgentsRoute } from '@/components/agents-route'
 import { ModuleRoute } from '@/components/module-route'
 import { AppLayout } from '@/components/app-layout'
+import { PageInfoProvider } from '@/contexts/page-info-context'
 
 const SetupPage = lazy(() => import('@/pages/setup'))
 const LoginPage = lazy(() => import('@/pages/login'))
@@ -28,10 +29,13 @@ const RecurringPage = lazy(() => import('@/pages/recurring'))
 const GoalsPage = lazy(() => import('@/pages/goals'))
 const AssetsPage = lazy(() => import('@/pages/assets'))
 const ReportsPage = lazy(() => import('@/pages/reports'))
+const PlanningPage = lazy(() => import('@/pages/planning'))
+const GuidancePage = lazy(() => import('@/pages/guidance'))
 const PayeesPage = lazy(() => import('@/pages/payees'))
 const GroupsPage = lazy(() => import('@/pages/groups'))
 const GroupDetailPage = lazy(() => import('@/pages/group-detail'))
 const AdminSettingsPage = lazy(() => import('@/pages/admin/settings'))
+const DriveBackupCallbackPage = lazy(() => import('@/pages/admin/drive-backup-callback'))
 const AgentsListPage = lazy(() => import('@/pages/agents-list'))
 const AgentDetailPage = lazy(() => import('@/pages/agent-detail'))
 const AgentConnectionsPage = lazy(() => import('@/pages/agent-connections'))
@@ -74,7 +78,9 @@ function App() {
                   element={
                     <ProtectedRoute>
                       <CollectionFilterProvider>
-                        <AppLayout />
+                        <PageInfoProvider>
+                          <AppLayout />
+                        </PageInfoProvider>
                       </CollectionFilterProvider>
                     </ProtectedRoute>
                   }
@@ -96,11 +102,14 @@ function App() {
                   {/* Kept so links minted before the importers were merged keep working. */}
                   <Route path="/assets/import" element={<Navigate to="/import?tab=investments" replace />} />
                   <Route path="/reports" element={<ModuleRoute module="reports"><ReportsPage /></ModuleRoute>} />
+                  <Route path="/planning" element={<ModuleRoute module="planning"><PlanningPage /></ModuleRoute>} />
+                  <Route path="/guidance" element={<ModuleRoute module="guidance"><GuidancePage /></ModuleRoute>} />
                   <Route path="/payees" element={<ModuleRoute module="payees"><PayeesPage /></ModuleRoute>} />
                   <Route path="/groups" element={<ModuleRoute module="split_groups"><GroupsPage /></ModuleRoute>} />
                   <Route path="/groups/:id" element={<ModuleRoute module="split_groups"><GroupDetailPage /></ModuleRoute>} />
                   <Route path="/invoices" element={<ModuleRoute module="invoices"><InvoicesPage /></ModuleRoute>} />
                   <Route path="/workspace/settings" element={<WorkspaceSettingsPage />} />
+                  <Route path="/admin/drive-backup/callback" element={<AdminRoute><DriveBackupCallbackPage /></AdminRoute>} />
                   <Route path="/admin" element={<AdminRoute><AdminSettingsPage /></AdminRoute>} />
                   <Route path="/agents" element={<AgentsRoute><AgentsListPage /></AgentsRoute>} />
                   <Route path="/agents/connections" element={<AgentsRoute><AgentConnectionsPage /></AgentsRoute>} />

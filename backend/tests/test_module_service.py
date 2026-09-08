@@ -147,9 +147,9 @@ def test_catalog_covers_every_module_id():
     assert set(CATALOG) == set(ModuleId)
 
 
-def test_invoices_is_the_only_module_off_by_default():
+def test_optional_modules_off_by_default():
     off = {m.value for m in ModuleId} - {m.value for m in catalog_defaults()}
-    assert off == {"invoices"}
+    assert off == {"invoices", "planning", "guidance"}
 
 
 @pytest.mark.parametrize("module_id", list(ModuleId))

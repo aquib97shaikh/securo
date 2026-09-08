@@ -43,6 +43,18 @@ export interface AppSetting {
   value: string
 }
 
+export interface DriveBackupStatus {
+  available: boolean
+  connected: boolean
+  google_email: string | null
+  folder_name: string
+  schedule: 'daily' | 'weekly'
+  has_password: boolean
+  last_run_at: string | null
+  last_run_ok: boolean | null
+  last_run_error: string | null
+}
+
 export type WorkspaceRole = 'owner' | 'editor' | 'viewer' | 'manager'
 
 export type WorkspaceKind = 'personal' | 'business'
@@ -85,6 +97,13 @@ export interface UserPreferences {
   currency_display?: string
   display_name?: string
   onboarding_completed?: boolean
+  guidance_enabled?: boolean
+  guidance_copilot_panel?: boolean
+  guidance_dashboard_widgets?: boolean
+  guidance_auto_actions?: boolean
+  planning_enabled?: boolean
+  planning_cashflow_forecast?: boolean
+  planning_monte_carlo?: boolean
 }
 
 export interface Category {
@@ -416,6 +435,8 @@ export interface Payee {
   tax_ids: PayeeTaxId[]
   created_at: string
   transaction_count: number
+  total_spent: number
+  total_received: number
 }
 
 /** One document kind as the active workspace's jurisdiction describes it.
@@ -728,6 +749,155 @@ export interface BudgetVsActual {
   is_recurring: boolean
 }
 
+export interface BudgetInsight {
+  id: string
+  type: string
+  severity: 'info' | 'warning' | 'success'
+  title: string
+  description: string
+  category_id: string | null
+  amount: number | null
+  suggestion: string | null
+  action_url: string | null
+}
+
+export interface CategoryProjection {
+  category_id: string
+  category_name: string
+  category_icon: string
+  category_color: string
+  projected_amount: number
+}
+
+export interface RecurringProjection {
+  recurring_id: string
+  description: string
+  amount: number
+  amount_primary: number | null
+  currency: string
+  type: string
+  date: string
+  category_id: string | null
+  category_name: string | null
+}
+
+export interface GoalContribution {
+  goal_id: string
+  goal_name: string
+  monthly_contribution: number
+  currency: string
+  target_date: string | null
+  on_track: string | null
+}
+
+export interface MonthProjection {
+  month: string
+  projected_income: number
+  projected_expenses: number
+  projected_savings: number
+  projected_balance: number
+  expense_breakdown: CategoryProjection[]
+  recurring_items: RecurringProjection[]
+  goal_contributions: GoalContribution[]
+  cumulative_savings: number
+}
+
+export interface PlanSummary {
+  starting_balance: number
+  ending_balance: number
+  lowest_balance: number
+  lowest_balance_month: string | null
+  has_shortfall: boolean
+  shortfall_amount: number
+  safety_buffer: number
+  total_projected_income: number
+  total_projected_expenses: number
+  total_projected_savings: number
+  avg_monthly_income: number
+  avg_monthly_expenses: number
+  avg_monthly_savings: number
+  currency: string
+}
+
+export interface ExpensePlan {
+  starting_balance: number
+  forecast_mode: 'all' | 'recurring_only' | 'budget_only'
+  account_id: string | null
+  months: MonthProjection[]
+  summary: PlanSummary
+}
+
+export interface InvestmentPot {
+  id: string
+  name: string
+  starting_balance: number
+  account_id?: string | null
+  asset_class: 'aggressive' | 'growth' | 'balanced' | 'conservative' | 'cash' | 'custom'
+  expected_return: number
+  volatility: number
+  access_age?: number | null
+  tax_rate: number
+  fee_annual_percent: number
+}
+
+export interface ContributionPlan {
+  id: string
+  name: string
+  pot_id: string
+  amount_annual: number
+  start_age?: number | null
+  end_age?: number | null
+  adjust_for_inflation: boolean
+}
+
+export interface SpendingPhase {
+  id: string
+  name: string
+  start_age: number
+  amount_annual: number
+}
+
+export interface MonteCarloRequest {
+  current_age: number
+  target_age: number
+  num_simulations: number
+  inflation_mean: number
+  inflation_std: number
+  pots: InvestmentPot[]
+  contributions: ContributionPlan[]
+  spending_phases: SpendingPhase[]
+  withdrawal_strategy: 'proportional' | 'drain_order' | 'best_performer'
+  min_annual_withdrawal: number
+}
+
+export interface YearlyPercentile {
+  age: number
+  year: number
+  p10: number
+  p25: number
+  p50: number
+  p75: number
+  p90: number
+}
+
+export interface FailureDistribution {
+  age: number
+  count: number
+  percentage: number
+}
+
+export interface MonteCarloResult {
+  success_rate: number
+  median_ending_balance: number
+  median_total_withdrawn: number
+  chance_of_running_out: number
+  typical_failure_age: number | null
+  percentiles: YearlyPercentile[]
+  failure_histogram: FailureDistribution[]
+  total_simulations: number
+  currency: string
+}
+
 export interface Asset {
   id: string
   user_id: string
@@ -768,6 +938,7 @@ export interface Asset {
   total_invested: number | null
   realized_gain: number | null
   transaction_count: number
+  karat: number | null
 }
 
 /** One order read from a broker CSV, before it reaches a holding. */
@@ -1006,3 +1177,6 @@ export interface ReportResponse {
   composition: ReportCompositionItem[]
   category_trend: CategoryTrendItem[]
 }
+
+export * from './guidance'
+

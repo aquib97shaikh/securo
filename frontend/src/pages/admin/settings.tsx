@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { useTheme } from 'next-themes'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { admin as adminApi, currencies as currenciesApi } from '@/lib/api'
-import { resolveDisplayLocale, resolveDateLocale, type NumberFormat, type DateFormat } from '@/lib/format'
+import { formatCompactCurrency, resolveDisplayLocale, resolveDateLocale, type NumberFormat, type DateFormat } from '@/lib/format'
 import { resolveSupportedLang, SUPPORTED_LANGS } from '@/lib/i18n'
 import { useAuth } from '@/contexts/auth-context'
 import { toast } from 'sonner'
@@ -29,6 +29,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { PageHeader } from '@/components/page-header'
+import { DriveBackupSettings } from '@/components/drive-backup-settings'
 import { setThemeBasedOnSystem } from '@/lib/theme-utils'
 import { useLocalAuthEnabled } from '@/hooks/use-local-auth'
 import { Search, Plus, Trash2, Shield, ShieldOff, UserCog, Users, Scale, Tag, Palette, Save, Hash, CalendarDays } from 'lucide-react'
@@ -509,12 +510,19 @@ export default function AdminSettingsPage() {
             { value: 'comma_dot', label: t('admin.settings.numberFormatCommaDot'), desc: t('admin.settings.numberFormatCommaDotDesc') },
             { value: 'dot_comma', label: t('admin.settings.numberFormatDotComma'), desc: t('admin.settings.numberFormatDotCommaDesc') },
             { value: 'space_comma', label: t('admin.settings.numberFormatSpaceComma'), desc: t('admin.settings.numberFormatSpaceCommaDesc') },
+            { value: 'indian', label: t('admin.settings.numberFormatIndian'), desc: t('admin.settings.numberFormatIndianDesc') },
           ] as const).map((opt) => {
             // Live preview of how this option renders a sample amount, resolved
-            // against the admin's currency + UI language.
+            // against the admin's currency + UI language. Indian grouping only
+            // differs past 99,999, so that option uses a 7-digit sample plus
+            // a compact Lakh/Crore label.
             const adminCurrency = currentUser?.preferences?.currency_display ?? 'USD'
             const numLocale = resolveDisplayLocale(opt.value as NumberFormat, adminCurrency, i18n.language === 'en' ? 'en-US' : i18n.language)
-            const numExample = new Intl.NumberFormat(numLocale, { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(1234.56)
+            const previewAmount = opt.value === 'indian' ? 1234567.89 : 1234.56
+            const numExample = new Intl.NumberFormat(numLocale, { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(previewAmount)
+            const compactExample = opt.value === 'indian'
+              ? formatCompactCurrency(previewAmount, adminCurrency, numLocale)
+              : null
             return (
               <button
                 key={opt.value}
@@ -529,7 +537,15 @@ export default function AdminSettingsPage() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-baseline gap-2 flex-wrap">
                     <p className="text-sm font-medium text-foreground tabular-nums">{opt.label}</p>
-                    <span className="text-xs tabular-nums text-muted-foreground">{numExample}</span>
+                    <span className="text-xs tabular-nums text-muted-foreground">
+                      {numExample}
+                      {compactExample ? (
+                        <>
+                          {' '}
+                          <span className="opacity-50">·</span> {compactExample}
+                        </>
+                      ) : null}
+                    </span>
                   </div>
                   {opt.desc && (
                     <p className="text-xs text-muted-foreground mt-0.5">{opt.desc}</p>
@@ -590,6 +606,8 @@ export default function AdminSettingsPage() {
           })}
         </div>
       </div>
+
+      <DriveBackupSettings />
 
       {/* Settings section */}
       <div className="rounded-xl border border-border/60 bg-card overflow-hidden">

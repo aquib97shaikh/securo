@@ -276,6 +276,8 @@ export default function DashboardPage() {
     queryFn: () => goalsApi.summary(3),
   })
 
+
+
   const updateMutation = useMutation({
     mutationFn: ({ id, ...data }: TransactionSavePayload & { id: string }) =>
       transactions.update(id, data),
@@ -807,6 +809,8 @@ export default function DashboardPage() {
           </div>
         </div>
       </div>
+
+
 
       {/* Charts: Category Spending Bars + Balance Flow */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-5" style={{ gridAutoRows: 'minmax(380px, auto)' }}>

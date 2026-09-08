@@ -559,3 +559,31 @@ class TestThemeSettings:
         )
         assert response.status_code == 400
         assert "invalid hex color code" in response.json()["detail"].lower()
+
+
+class TestNumberFormat:
+    async def test_patch_indian_and_signed_in_users_can_read_it(
+        self, client: AsyncClient, admin_auth_headers: dict, auth_headers: dict, test_superuser: User, test_user: User
+    ):
+        patch = await client.patch(
+            "/api/admin/settings/number_format",
+            json={"value": "indian"},
+            headers=admin_auth_headers,
+        )
+        assert patch.status_code == 200
+        assert patch.json()["value"] == "indian"
+
+        read = await client.get("/api/admin/number-format", headers=auth_headers)
+        assert read.status_code == 200
+        assert read.json()["format"] == "indian"
+
+    async def test_patch_rejects_unknown_number_format(
+        self, client: AsyncClient, admin_auth_headers: dict, test_superuser: User
+    ):
+        response = await client.patch(
+            "/api/admin/settings/number_format",
+            json={"value": "lakhs"},
+            headers=admin_auth_headers,
+        )
+        assert response.status_code == 400
+        assert "indian" in response.json()["detail"].lower()

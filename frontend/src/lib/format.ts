@@ -5,13 +5,15 @@
  * read:
  *  - Numbers/currency resolve to a representative BCP-47 locale whose
  *    thousands/decimal separators match the setting (`resolveDisplayLocale`).
+ *    `indian` uses en-IN so amounts group as 12,34,567.89 and compact labels
+ *    use Lakh/Crore (12.3L / 1.2Cr).
  *  - Dates keep the user's app language for month/day *words* but take their
  *    field *order* (day-first vs month-first) from the setting
  *    (`resolveDateLocale`). So an English UI on the European format shows
  *    "4 Jun 2026" / "04/06/2026" — never the German "4. Juni".
  */
 
-export type NumberFormat = 'auto' | 'comma_dot' | 'dot_comma' | 'space_comma'
+export type NumberFormat = 'auto' | 'comma_dot' | 'dot_comma' | 'space_comma' | 'indian'
 
 /** Admin date-format setting. 'auto' derives the order from the number format. */
 export type DateFormat = 'auto' | 'dmy' | 'mdy' | 'ymd'
@@ -23,6 +25,7 @@ const FORMAT_LOCALE: Record<Exclude<NumberFormat, 'auto'>, string> = {
   comma_dot: 'en-US', // 1,000.00
   dot_comma: 'de-DE', // 1.000,00
   space_comma: 'fr-FR', // 1 000,00
+  indian: 'en-IN', // 12,34,567.89
 }
 
 /**
@@ -104,7 +107,7 @@ export function resolveDateOrder(
   if (dateFormat === 'dmy' || dateFormat === 'mdy' || dateFormat === 'ymd') return dateFormat
   // auto → follow the number format's convention, then the currency.
   if (numberFormat === 'comma_dot') return 'mdy'
-  if (numberFormat === 'dot_comma' || numberFormat === 'space_comma') return 'dmy'
+  if (numberFormat === 'dot_comma' || numberFormat === 'space_comma' || numberFormat === 'indian') return 'dmy'
   return currency && MONTH_FIRST_CURRENCIES.has(currency) ? 'mdy' : 'dmy'
 }
 
@@ -175,4 +178,44 @@ export function formatCurrency(
   // residue that summed balances and FX conversions leave behind.
   const factor = 10 ** (formatter.resolvedOptions().maximumFractionDigits ?? 2)
   return formatter.format(Math.round(value * factor) === 0 ? 0 : value)
+}
+
+function compactFormatter(locale: string, currency?: string): Intl.NumberFormat {
+  try {
+    return currency
+      ? new Intl.NumberFormat(locale, {
+          style: 'currency',
+          currency,
+          notation: 'compact',
+          maximumFractionDigits: 1,
+        })
+      : new Intl.NumberFormat(locale, {
+          notation: 'compact',
+          maximumFractionDigits: 1,
+        })
+  } catch {
+    return new Intl.NumberFormat('en-US', {
+      notation: 'compact',
+      maximumFractionDigits: 1,
+    })
+  }
+}
+
+/** Compact currency for tight chart/calendar labels — ₹12.3L, $1.2M. */
+export function formatCompactCurrency(
+  value: number | null | undefined,
+  currency = 'USD',
+  locale = 'en-US',
+): string {
+  if (value == null) return '—'
+  return compactFormatter(locale, currency || 'USD').format(value)
+}
+
+/** Compact number without a currency symbol — 12.3L, 1.2M. */
+export function formatCompactNumber(
+  value: number | null | undefined,
+  locale = 'en-US',
+): string {
+  if (value == null) return '—'
+  return compactFormatter(locale).format(value)
 }

@@ -126,7 +126,9 @@
     "groupAdmin": "Администрирование",
     "groupAgents": "ИИ",
     "agents": "Агенты",
-    "aiAgents": "ИИ-агенты"
+    "aiAgents": "ИИ-агенты",
+    "planning": "Планирование",
+    "guidance": "Guidance"
   },
   "invoices": {
     "title": "Счета",
@@ -560,7 +562,9 @@
     "calendarNoActivity": "В этом месяце нет активности",
     "calendarNoMovements": "Нет операций",
     "calendarActualNet": "Фактический итог",
-    "calendarTransfersExcluded": "Переводы не учитываются как приход или расходы"
+    "calendarTransfersExcluded": "Переводы не учитываются как приход или расходы",
+    "bulkDeleteTitle": "Delete {{count}} transactions?",
+    "bulkDeleteSuccess": "{{count}} transactions deleted"
   },
   "accounts": {
     "title": "Счета",
@@ -706,9 +710,18 @@
       },
       "simplefin": {
         "description": "Банки США и других стран через SimpleFIN Bridge"
+      },
+      "kite": {
+        "description": "Indian stocks and mutual funds via Kite Connect",
+        "connectTitle": "Connect Zerodha",
+        "connectDesc": "Log in with your Zerodha credentials to sync equity and mutual fund holdings."
       }
     },
-    "reconnected": "Банк успешно переподключён"
+    "reconnected": "Банк успешно переподключён",
+    "multiInstitutionLink": "{{provider}} · {{count}} institutions",
+    "connectProvider": "Connect provider",
+    "connectProviderDesc": "You will be redirected to sign in securely.",
+    "continueToLogin": "Continue to login"
   },
   "connections": {
     "settings": "Настройки подключения",
@@ -855,6 +868,9 @@
     "confirmDeleteTitle": "Удалить регулярную транзакцию?",
     "generated": "Создано {{count}} транзакций",
     "generatePending": "Создать ожидающие",
+    "backfill": "Заполнить",
+    "backfillUntilToday": "Заполнить до сегодня",
+    "backfillUntilTodayHelp": "Создаёт по одной транзакции на каждую дату с начала по сегодня. Более поздние даты ждут своего срока.",
     "autoGenerate": "Создавать транзакции автоматически",
     "autoGenerateHelp": "Создаёт транзакцию при каждом наступлении срока оплаты. Отключите, чтобы дождаться реального списания (например, из банковской синхронизации) и до тех пор показывать её только как предстоящую.",
     "fxEstimate": "Оценка на основе последнего курса ({{rate}}). Итоговая сумма может измениться.",
@@ -1193,6 +1209,8 @@
     "typeStock": "Акция",
     "typeEtf": "ETF",
     "typeCrypto": "Криптовалюта",
+    "typeGold": "Золото",
+    "typeSilver": "Серебро",
     "typeFund": "Фонд",
     "typeOther": "Другое",
     "valuationMethod": "Метод оценки",
@@ -1201,7 +1219,15 @@
     "marketPrice": "Рыночная цена",
     "ticker": "Тикер",
     "tickerPlaceholder": "например, AAPL, BTC-USD, PETR4.SA",
+    "metalTickerPlaceholder": "например, GOLD, SILVER",
     "quantity": "Количество",
+    "weightGrams": "Вес (граммы)",
+    "metalWeightHint": "Укажите граммы. Котировки GOLD и SILVER уже за грамм в выбранной валюте.",
+    "metalPurchasePrice": "Цена покупки (за грамм)",
+    "metalPurchasePriceHint": "Оставьте пустым, чтобы использовать текущую рыночную цену.",
+    "karat": "Карат",
+    "karatHint": "24K — чистое золото. 22K — типичные украшения. Живая цена масштабируется по пробе.",
+    "metalCurrencyHint": "Живые цены на золото и серебро приходят из GoldPriceZ в выбранной валюте, за грамм.",
     "marketPriceSource": "Котировка",
     "marketPriceSourceTooltip": "Цена обновляется автоматически с рыночных данных",
     "lastUpdated": "Обновлено {{when}}",
@@ -1279,7 +1305,17 @@
     "total": "Итого",
     "confirmRegenerateTitle": "Перегенерировать значения?",
     "confirmRegenerate": "Параметры роста изменены. Все автоматически сгенерированные значения будут удалены и пересчитаны. Ручные значения сохранятся.",
-    "regenerate": "Перегенерировать"
+    "regenerate": "Перегенерировать",
+    "sessionExpired": "Session expired — reconnect to sync",
+    "connectionNeedsReconnect": "Connection error — reconnect to sync",
+    "syncStaleTitle": "Synced holdings may be out of date",
+    "syncStaleDescription": "Your broker connection needs a fresh login to update portfolio values.",
+    "reconnectInstitution": "Reconnect {{name}}",
+    "reconnectOnAccounts": "Reconnect on Accounts",
+    "connectZerodha": "Connect Zerodha",
+    "chartRange": "Time range",
+    "chartToggleSeries": "Toggle {{name}} in chart",
+    "rangeAll": "All"
   },
   "reports": {
     "section": "Аналитика",
@@ -1384,6 +1420,9 @@
     "empty": "Получателей пока нет",
     "searchPlaceholder": "Поиск получателей...",
     "transactionCount": "Транзакции",
+    "net": "Итого",
+    "youOwe": "Вы должны",
+    "owedToYou": "Вам должны",
     "totalSpent": "Всего потрачено",
     "totalReceived": "Всего получено",
     "lastTransaction": "Последняя транзакция",
@@ -1637,7 +1676,8 @@
     "passwordPlaceholder": "Оставьте пустым для копии без шифрования",
     "passwordTooShort": "Используйте не менее {{min}} символов",
     "encryptionNote": "Архив шифруется алгоритмом AES-256 и открывается любым архиватором. Securo не хранит этот пароль и не сможет восстановить файл без него.",
-    "successEncrypted": "Зашифрованная резервная копия успешно загружена"
+    "successEncrypted": "Зашифрованная резервная копия успешно загружена",
+    "driveNote": "This will also update Google Drive (latest plus the last 3 dated copies for this workspace)."
   },
   "update": {
     "title": "Обновление сервера",
@@ -1710,6 +1750,8 @@
       "numberFormatDotCommaDesc": "Точка — разделитель тысяч, запятая — десятичный разделитель",
       "numberFormatSpaceComma": "1 000,00",
       "numberFormatSpaceCommaDesc": "Пробел — разделитель тысяч, запятая — десятичный разделитель",
+      "numberFormatIndian": "12,34,567.89",
+      "numberFormatIndianDesc": "Индийская группировка, сокращения лакх/крор",
       "dateFormatTitle": "Формат даты",
       "dateFormatDesc": "Как отображаются даты. Названия месяцев всегда соответствуют языку приложения пользователя.",
       "dateFormatAuto": "Автоматический",
@@ -1720,7 +1762,30 @@
       "dateFormatMdyDesc": "Сначала месяц, например 06.04.2026.",
       "dateFormatYmd": "Год / Месяц / День",
       "dateFormatYmdDesc": "ISO-порядок, например 2026-06-04.",
-      "updated": "Настройка обновлена"
+      "updated": "Настройка обновлена",
+      "driveBackupTitle": "Google Drive backup",
+      "driveBackupDesc": "Upload every workspace to Drive on a schedule, named after the workspace. Keeps a latest file plus the last 3 dated copies.",
+      "driveBackupUnavailable": "Set GOOGLE_DRIVE_CLIENT_ID and GOOGLE_DRIVE_CLIENT_SECRET on the server to enable Drive backup. Until then, Backup only downloads a zip.",
+      "driveBackupConnect": "Connect Google",
+      "driveBackupDisconnect": "Disconnect",
+      "driveBackupConnecting": "Connecting Google Drive…",
+      "driveBackupConnected": "Google Drive connected",
+      "driveBackupConnectedAs": "Connected as {{email}}",
+      "driveBackupNotConnected": "Not connected",
+      "driveBackupFolder": "Folder: {{folder}}",
+      "driveBackupSchedule": "Schedule",
+      "driveBackupDaily": "Daily",
+      "driveBackupWeekly": "Weekly",
+      "driveBackupPassword": "Drive zip password (optional)",
+      "driveBackupPasswordPlaceholder": "Leave empty for an unencrypted Drive copy",
+      "driveBackupPasswordSet": "Password is set — enter a new one to change it",
+      "driveBackupClearPassword": "Remove Drive password",
+      "driveBackupLastRunNever": "No Drive upload yet",
+      "driveBackupLastRunOk": "Last upload succeeded {{when}}",
+      "driveBackupLastRunFailed": "Last upload failed {{when}}: {{error}}",
+      "driveBackupSaved": "Drive backup settings saved",
+      "driveBackupDisconnected": "Google Drive disconnected",
+      "driveBackupConnectError": "Could not connect Google Drive"
     }
   },
   "onboarding": {
@@ -1923,10 +1988,13 @@
         "token": "Токен",
         "url": "MCP-эндпоинт",
         "curl": "Пример curl",
-        "clientConfig": "Интеграция клиента"
+        "clientConfig": "Интеграция клиента",
+        "claudeDesktopHint": "Claude Desktop принимает только stdio-серверы. Этот фрагмент использует npx mcp-remote как локальный мост. Полностью закройте Claude (трей) и откройте снова."
       },
       "clients": {
         "claude": "Claude Desktop / Code / Cursor",
+        "claudeDesktop": "Claude Desktop",
+        "cursor": "Cursor / Claude Code",
         "openai": "OpenAI Responses API"
       }
     },
@@ -1971,5 +2039,28 @@
         "subtitle": "Добавьте подключение, чтобы направить Securo на ваш локальный Ollama, OpenAI, Anthropic или любой совместимый с OpenAI эндпоинт."
       }
     }
+  },
+  "guidance": {
+    "title": "Financial Guidance",
+    "subtitle": "Ranked evidence-backed recommendations for this week & month",
+    "activeGuidance": "Active Guidance",
+    "adviceTimeline": "Advice Timeline",
+    "onThisPage": "On this page",
+    "allInsights": "All insights",
+    "urgentNow": "Urgent now",
+    "needsAttention": "Needs attention",
+    "watchList": "Watch list",
+    "improveOverTime": "Improve over time",
+    "noInsights": "All clear here!",
+    "noInsightsDesc": "No active warnings or improvements needed for this view.",
+    "takeAction": "Take action",
+    "why": "Why?",
+    "snooze7": "Snooze for 7 days",
+    "snooze30": "Snooze for 30 days",
+    "dismiss": "Dismiss permanently",
+    "helpful": "Helpful",
+    "openInbox": "Open Guidance Inbox",
+    "cashflowForecast": "Upcoming 14-Day Cash Flow Forecast",
+    "monthAtRisk": "This Month at Risk"
   }
 }

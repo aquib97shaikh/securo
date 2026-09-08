@@ -126,7 +126,9 @@
     "groupAgents": "AI",
     "agents": "Agenci",
     "aiAgents": "Agenci AI",
-    "collections": "Kolekcje"
+    "collections": "Kolekcje",
+    "planning": "Planowanie",
+    "guidance": "Guidance"
   },
   "invoices": {
     "title": "Faktury",
@@ -301,7 +303,9 @@
     "fxRateUsed": "Kurs FX: {{rate}}",
     "refreshRates": "Odśwież kursy FX",
     "ratesRefreshed": "Zaktualizowano kursy FX",
-    "ratesError": "Nie udało się zaktualizować kursów FX"
+    "ratesError": "Nie udało się zaktualizować kursów FX",
+    "drillDownTotal": "{{count}} transactions · {{total}}",
+    "uncategorizedCta": "{{count}} transactions need categorizing"
   },
   "transactions": {
     "title": "Transakcje",
@@ -552,7 +556,8 @@
         "thisMonth": "Bieżący miesiąc",
         "last90": "Ostatnie 90 dni",
         "thisYear": "Bieżący rok"
-      }
+      },
+      "nSelected": "{{count}} selected"
     },
     "bulkAddTags": "Dodaj tagi",
     "bulkRemoveTags": "Usuń tagi",
@@ -587,7 +592,15 @@
     "calendarNoActivity": "Brak aktywności w tym miesiącu",
     "calendarNoMovements": "Brak operacji",
     "calendarActualNet": "Rzeczywiste netto",
-    "calendarTransfersExcluded": "Transfery nie liczą się jako przychody ani wydatki"
+    "calendarTransfersExcluded": "Transfery nie liczą się jako przychody ani wydatki",
+    "exportSelected": "Export Selected ({{count}})",
+    "summaryCount": "{{count}} transactions",
+    "bulkSuccess": "{{count}} transactions categorized",
+    "bulkDeleteTitle": "Delete {{count}} transactions?",
+    "bulkDeleteSuccess": "{{count}} transactions deleted",
+    "bulkAddToGroupTitle": "Add {{count}} transactions to a group",
+    "bulkAddToGroupSuccess": "{{count}} transactions added to group",
+    "installmentTooltip": "Installment plan — {{count}} charges totaling {{total}}"
   },
   "accounts": {
     "title": "Konta",
@@ -742,9 +755,21 @@
       },
       "simplefin": {
         "description": "Banki w USA i międzynarodowe przez SimpleFIN Bridge"
+      },
+      "kite": {
+        "description": "Indian stocks and mutual funds via Kite Connect",
+        "connectTitle": "Connect Zerodha",
+        "connectDesc": "Log in with your Zerodha credentials to sync equity and mutual fund holdings."
       }
     },
-    "reconnected": "Bank połączony ponownie"
+    "reconnected": "Bank połączony ponownie",
+    "multiInstitutionLink": "{{provider}} · {{count}} institutions",
+    "overdueDays": "Overdue by {{count}} days",
+    "dueIn": "Due in {{count}} days",
+    "mergedCount": "{{count}} transactions merged with synced data",
+    "connectProvider": "Connect provider",
+    "connectProviderDesc": "You will be redirected to sign in securely.",
+    "continueToLogin": "Continue to login"
   },
   "connections": {
     "settings": "Ustawienia połączenia",
@@ -858,7 +883,9 @@
     "trackingWallet": "Portfel",
     "wallet": "Portfel",
     "selectWallet": "Wybierz portfel",
-    "walletHint": "Śledź ten cel według łącznej wartości wszystkich aktywów w wybranym portfelu."
+    "walletHint": "Śledź ten cel według łącznej wartości wszystkich aktywów w wybranym portfelu.",
+    "daysRemaining": "{{count}} days left",
+    "daysOverdue": "{{count}} days overdue"
   },
   "recurring": {
     "title": "Transakcje cykliczne",
@@ -900,10 +927,14 @@
     "generated_many": "Wygenerowano {{count}} transakcji",
     "generated_other": "Wygenerowano {{count}} transakcji",
     "generatePending": "Generuj oczekujące",
+    "backfill": "Uzupełnij",
+    "backfillUntilToday": "Uzupełnij do dziś",
+    "backfillUntilTodayHelp": "Tworzy jedną transakcję na każdą datę płatności od daty rozpoczęcia do dziś. Późniejsze daty czekają na swój termin.",
     "autoGenerate": "Automatycznie generuj transakcje",
     "autoGenerateHelp": "Tworzy transakcję za każdym razem, gdy ten rachunek jest wymagalny. Wyłącz, aby poczekać na rzeczywiste obciążenie (np. z synchronizacji bankowej) i do tego czasu pokazywać je tylko jako nadchodzące.",
     "fxEstimate": "Szacunek na podstawie najnowszego kursu wymiany ({{rate}}). Ostateczna kwota może się zmienić.",
-    "confirmDeleteDescription": "Definicja transakcji cyklicznej „{{description}}” zostanie trwale usunięta. Istniejące transakcje pozostaną, ale utracą powiązanie z transakcją cykliczną. Tej operacji nie można cofnąć."
+    "confirmDeleteDescription": "Definicja transakcji cyklicznej „{{description}}” zostanie trwale usunięta. Istniejące transakcje pozostaną, ale utracą powiązanie z transakcją cykliczną. Tej operacji nie można cofnąć.",
+    "generated": "{{count}} transactions generated"
   },
   "rules": {
     "preview": "Podgląd",
@@ -1014,7 +1045,10 @@
     "importConfirmTitle": "Import categorization rules?",
     "importConfirmDescription": "File {{file}} contains {{count}} rules.",
     "importOverwriteWarning": "Importing will overwrite your current categorization rules. This cannot be undone.",
-    "confirmOverwriteImport": "Overwrite and import"
+    "confirmOverwriteImport": "Overwrite and import",
+    "packRuleCount": "{{count}} rules",
+    "packInstalled": "{{count}} rules installed",
+    "applied": "Rules applied to {{count}} transactions"
   },
   "categories": {
     "title": "Kategorie",
@@ -1161,7 +1195,13 @@
     "page": "Strona {{current}} z {{total}}",
     "mapPayee": "Kolumna odbiorcy",
     "mapExternalId": "Kolumna ID transakcji",
-    "mapNotes": "Kolumna notatek"
+    "mapNotes": "Kolumna notatek",
+    "incomeCount": "{{count}} income",
+    "expenseCount": "{{count}} expenses",
+    "importButton": "Import {{count}} transactions",
+    "undoOrdersDescription": "This will delete the {{count}} orders imported from {{filename}} and recalculate the positions they touched. Holdings this import created are removed with them.",
+    "undoDescription": "This will delete {{count}} imported transactions from {{filename}}. This action cannot be undone.",
+    "previewInfo": "{{count}} transactions · format {{format}}"
   },
   "assetImport": {
     "title": "Importuj zlecenia inwestycyjne",
@@ -1265,6 +1305,8 @@
     "typeStock": "Akcje",
     "typeEtf": "ETF",
     "typeCrypto": "Kryptowaluta",
+    "typeGold": "Złoto",
+    "typeSilver": "Srebro",
     "typeFund": "Fundusz",
     "typeOther": "Inne",
     "valuationMethod": "Metoda wyceny",
@@ -1273,7 +1315,15 @@
     "marketPrice": "Cena rynkowa",
     "ticker": "Ticker",
     "tickerPlaceholder": "np. AAPL, BTC-USD, PETR4.SA",
+    "metalTickerPlaceholder": "np. GOLD, SILVER",
     "quantity": "Ilość",
+    "weightGrams": "Waga (gramy)",
+    "metalWeightHint": "Podaj gramy. Notowania GOLD i SILVER są już za gram w wybranej walucie.",
+    "metalPurchasePrice": "Cena zakupu (za gram)",
+    "metalPurchasePriceHint": "Zostaw puste, aby użyć bieżącej ceny rynkowej.",
+    "karat": "Karat",
+    "karatHint": "24K to czyste złoto. 22K to typowa biżuteria. Cena na żywo jest skalowana według próby.",
+    "metalCurrencyHint": "Żywe ceny złota i srebra pochodzą z GoldPriceZ w wybranej walucie, za gram.",
     "marketPriceSource": "Notowanie na żywo",
     "marketPriceSourceTooltip": "Cena odświeżana automatycznie z danych rynkowych",
     "lastUpdated": "Zaktualizowano {{when}}",
@@ -1351,7 +1401,17 @@
     "total": "Łącznie",
     "confirmRegenerateTitle": "Przeliczyć wartości ponownie?",
     "confirmRegenerate": "Zmieniono parametry wzrostu. Wszystkie automatycznie wygenerowane wartości zostaną usunięte i przeliczone ponownie. Wartości ręczne zostaną zachowane.",
-    "regenerate": "Przelicz ponownie"
+    "regenerate": "Przelicz ponownie",
+    "sessionExpired": "Session expired — reconnect to sync",
+    "connectionNeedsReconnect": "Connection error — reconnect to sync",
+    "syncStaleTitle": "Synced holdings may be out of date",
+    "syncStaleDescription": "Your broker connection needs a fresh login to update portfolio values.",
+    "reconnectInstitution": "Reconnect {{name}}",
+    "reconnectOnAccounts": "Reconnect on Accounts",
+    "connectZerodha": "Connect Zerodha",
+    "chartRange": "Time range",
+    "chartToggleSeries": "Toggle {{name}} in chart",
+    "rangeAll": "All"
   },
   "reports": {
     "section": "Analityka",
@@ -1456,6 +1516,9 @@
     "empty": "Brak odbiorców",
     "searchPlaceholder": "Szukaj odbiorców...",
     "transactionCount": "Transakcje",
+    "net": "Saldo",
+    "youOwe": "Jesteś winien",
+    "owedToYou": "Winni tobie",
     "totalSpent": "Łącznie wydano",
     "totalReceived": "Łącznie otrzymano",
     "lastTransaction": "Ostatnia transakcja",
@@ -1484,7 +1547,9 @@
     "deleteMultipleTitle": "Usuń odbiorców",
     "deleteMultipleConfirm": "Czy na pewno chcesz usunąć {{count}} wybranych odbiorców? Usunie to ich również ze wszystkich powiązanych transakcji.",
     "typeUnset": "Nie określono",
-    "website": "Strona internetowa"
+    "website": "Strona internetowa",
+    "viewAllTransactions": "View all {{count}} transactions",
+    "merged": "Payees merged ({{count}} transactions reassigned)"
   },
   "fiscal": {
     "kind": {
@@ -1565,7 +1630,8 @@
     "previous": "Poprzedni",
     "next": "Następny",
     "rowsPerPage": "Wierszy na stronę",
-    "noResults": "Brak wyników"
+    "noResults": "Brak wyników",
+    "showMore": "+{{count}} more"
   },
   "splitGroups": {
     "title": "Grupy",
@@ -1688,7 +1754,9 @@
       "project": "Projekt",
       "client": "Klient",
       "other": "Inne"
-    }
+    },
+    "memberCount": "{{count}} members",
+    "splitWays": "split {{count}} ways"
   },
   "privacy": {
     "hide": "Ukryj wartości",
@@ -1724,7 +1792,8 @@
     "passwordPlaceholder": "Zostaw puste, aby pobrać kopię bez szyfrowania",
     "passwordTooShort": "Użyj co najmniej {{min}} znaków",
     "encryptionNote": "Archiwum jest szyfrowane AES-256 i otwiera się w dowolnym programie do archiwów. Securo nie przechowuje tego hasła i bez niego nie odzyska pliku.",
-    "successEncrypted": "Pomyślnie pobrano zaszyfrowaną kopię zapasową"
+    "successEncrypted": "Pomyślnie pobrano zaszyfrowaną kopię zapasową",
+    "driveNote": "This will also update Google Drive (latest plus the last 3 dated copies for this workspace)."
   },
   "update": {
     "title": "Aktualizacja serwera",
@@ -1797,6 +1866,8 @@
       "numberFormatDotCommaDesc": "Kropka dla tysięcy, przecinek dla części dziesiętnych",
       "numberFormatSpaceComma": "1 000,00",
       "numberFormatSpaceCommaDesc": "Spacja dla tysięcy, przecinek dla części dziesiętnych",
+      "numberFormatIndian": "12,34,567.89",
+      "numberFormatIndianDesc": "Indyjskie grupowanie, kompaktowo w lakh/crore",
       "dateFormatTitle": "Format daty",
       "dateFormatDesc": "Sposób wyświetlania dat. Nazwy miesięcy zawsze zależą od języka aplikacji danego użytkownika.",
       "dateFormatAuto": "Automatyczny",
@@ -1807,7 +1878,30 @@
       "dateFormatMdyDesc": "Najpierw miesiąc, np. 06/04/2026.",
       "dateFormatYmd": "Rok / Miesiąc / Dzień",
       "dateFormatYmdDesc": "Kolejność ISO, np. 2026-06-04.",
-      "updated": "Zaktualizowano ustawienie"
+      "updated": "Zaktualizowano ustawienie",
+      "driveBackupTitle": "Google Drive backup",
+      "driveBackupDesc": "Upload every workspace to Drive on a schedule, named after the workspace. Keeps a latest file plus the last 3 dated copies.",
+      "driveBackupUnavailable": "Set GOOGLE_DRIVE_CLIENT_ID and GOOGLE_DRIVE_CLIENT_SECRET on the server to enable Drive backup. Until then, Backup only downloads a zip.",
+      "driveBackupConnect": "Connect Google",
+      "driveBackupDisconnect": "Disconnect",
+      "driveBackupConnecting": "Connecting Google Drive…",
+      "driveBackupConnected": "Google Drive connected",
+      "driveBackupConnectedAs": "Connected as {{email}}",
+      "driveBackupNotConnected": "Not connected",
+      "driveBackupFolder": "Folder: {{folder}}",
+      "driveBackupSchedule": "Schedule",
+      "driveBackupDaily": "Daily",
+      "driveBackupWeekly": "Weekly",
+      "driveBackupPassword": "Drive zip password (optional)",
+      "driveBackupPasswordPlaceholder": "Leave empty for an unencrypted Drive copy",
+      "driveBackupPasswordSet": "Password is set — enter a new one to change it",
+      "driveBackupClearPassword": "Remove Drive password",
+      "driveBackupLastRunNever": "No Drive upload yet",
+      "driveBackupLastRunOk": "Last upload succeeded {{when}}",
+      "driveBackupLastRunFailed": "Last upload failed {{when}}: {{error}}",
+      "driveBackupSaved": "Drive backup settings saved",
+      "driveBackupDisconnected": "Google Drive disconnected",
+      "driveBackupConnectError": "Could not connect Google Drive"
     }
   },
   "onboarding": {
@@ -1923,7 +2017,8 @@
       "chunks_one": "{{count}} fragment",
       "chunks_few": "{{count}} fragmenty",
       "chunks_many": "{{count}} fragmentów",
-      "chunks_other": "{{count}} fragmentów"
+      "chunks_other": "{{count}} fragmentów",
+      "chunks": "{{count}} chunks"
     },
     "tools": {
       "title": "Narzędzia",
@@ -1973,7 +2068,8 @@
         "updateRecurring": "{{description}} → {{changes}}",
         "deactivateRecurring": "Zatrzymaj przyszłe wystąpienia „{{description}}” (historia zachowana)",
         "deleteRecurring": "Trwale usuń „{{description}}”",
-        "createGoal": "„{{name}}” — cel {{target}}, termin {{deadline}}"
+        "createGoal": "„{{name}}” — cel {{target}}, termin {{deadline}}",
+        "categorize": "{{count}} transaction(s) → {{category}}"
       }
     },
     "conversation": {
@@ -2057,12 +2153,38 @@
         "token": "Token",
         "url": "Punkt końcowy MCP",
         "curl": "Przykład curl",
-        "clientConfig": "Integracja klienta"
+        "clientConfig": "Integracja klienta",
+        "claudeDesktopHint": "Claude Desktop akceptuje tylko serwery stdio. Ten snippet używa npx mcp-remote jako lokalnego mostu. Całkowicie zamknij Claude (zasobnik) i otwórz ponownie."
       },
       "clients": {
         "claude": "Claude Desktop / Code / Cursor",
+        "claudeDesktop": "Claude Desktop",
+        "cursor": "Cursor / Claude Code",
         "openai": "OpenAI Responses API"
       }
     }
+  },
+  "guidance": {
+    "title": "Financial Guidance",
+    "subtitle": "Ranked evidence-backed recommendations for this week & month",
+    "activeGuidance": "Active Guidance",
+    "adviceTimeline": "Advice Timeline",
+    "onThisPage": "On this page",
+    "allInsights": "All insights",
+    "urgentNow": "Urgent now",
+    "needsAttention": "Needs attention",
+    "watchList": "Watch list",
+    "improveOverTime": "Improve over time",
+    "noInsights": "All clear here!",
+    "noInsightsDesc": "No active warnings or improvements needed for this view.",
+    "takeAction": "Take action",
+    "why": "Why?",
+    "snooze7": "Snooze for 7 days",
+    "snooze30": "Snooze for 30 days",
+    "dismiss": "Dismiss permanently",
+    "helpful": "Helpful",
+    "openInbox": "Open Guidance Inbox",
+    "cashflowForecast": "Upcoming 14-Day Cash Flow Forecast",
+    "monthAtRisk": "This Month at Risk"
   }
 }

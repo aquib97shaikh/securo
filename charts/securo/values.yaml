@@ -31,8 +31,15 @@ secret:
   oidcClientId: ""
   oidcClientSecret: ""
 
+  # Google Drive backups
+  googleDriveClientId: ""
+  googleDriveClientSecret: ""
+
   # OpenExchangeRates
   openexchangeratesAppId: ""
+
+  # GoldPriceZ live gold/silver (per gram). Leave empty to disable GOLD/SILVER spot quotes.
+  goldpricezApiKey: ""
 
   # Agents (LLM)
   agentsMcpJwtSecret: "dev-mcp-secret-change-in-production"
@@ -65,6 +72,8 @@ config:
   oidcRolesClaim: "groups"
   oidcAdminRoles: ""
   oidcWorkspaceRoleMap: ""
+  # Leave empty to use {frontend URL}/admin/drive-backup/callback
+  googleDriveOauthRedirectUri: ""
   fxSyncMode: "on_demand"
   tesouroDiretoEnabled: "true"
 

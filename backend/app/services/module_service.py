@@ -59,6 +59,8 @@ class ModuleId(str, Enum):
     SPLIT_GROUPS = "split_groups"
     RULES = "rules"
     INVOICES = "invoices"
+    PLANNING = "planning"
+    GUIDANCE = "guidance"
 
 
 @dataclass(frozen=True)
@@ -87,6 +89,8 @@ CATALOG: Mapping[ModuleId, ModuleSpec] = {
         ModuleSpec(ModuleId.SPLIT_GROUPS, default_enabled=True),
         ModuleSpec(ModuleId.RULES, default_enabled=True),
         ModuleSpec(ModuleId.INVOICES, default_enabled=False),
+        ModuleSpec(ModuleId.PLANNING, default_enabled=False),
+        ModuleSpec(ModuleId.GUIDANCE, default_enabled=False),
     )
 }
 

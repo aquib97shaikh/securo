@@ -57,6 +57,7 @@ from app.models.asset_value import AssetValue  # noqa: E402,F401
 from app.models.transaction_attachment import TransactionAttachment  # noqa: E402,F401
 from app.models.payee import Payee, PayeeMapping  # noqa: E402,F401
 from app.models.app_settings import AppSetting  # noqa: E402,F401
+from app.models.drive_backup import DriveBackupConfig  # noqa: E402,F401
 from app.models.goal import Goal  # noqa: E402,F401
 from app.models.credit_card_bill import CreditCardBill  # noqa: E402,F401
 from app.models.group import Group, GroupMember  # noqa: E402,F401

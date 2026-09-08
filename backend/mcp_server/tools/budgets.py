@@ -5,7 +5,7 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.services import budget_service
+from app.services import budget_insights_service, budget_service
 from mcp_server.auth import CallContext
 from mcp_server.registry import tool
 from mcp_server.tools._helpers import num, parse_date, resolve_workspace_id
@@ -37,7 +37,6 @@ async def get_budget_vs_actual(
     rows = await budget_service.get_budget_vs_actual(session, ws_id, ctx.user_id, month=target)
     items = []
     for r in rows:
-        # BudgetVsActual is a Pydantic model; serialize defensively.
         d = r.model_dump() if hasattr(r, "model_dump") else r.__dict__
         items.append({
             "category_id": str(d.get("category_id")) if d.get("category_id") else None,
@@ -48,3 +47,30 @@ async def get_budget_vs_actual(
             "currency": d.get("currency"),
         })
     return {"month": target.isoformat(), "items": items, "total": len(items)}
+
+
+@tool(
+    name="get_budget_insights",
+    description=(
+        "Get rule-based budget insights and actionable tips for a given month."
+    ),
+    parameters={
+        "type": "object",
+        "properties": {
+            "month": {"type": "string", "format": "date", "description": "Any date inside the target month (YYYY-MM-DD)"},
+        },
+        "additionalProperties": False,
+    },
+    tags=["read", "budgets"],
+)
+async def get_budget_insights(
+    *,
+    session: AsyncSession,
+    ctx: CallContext,
+    month: str | None = None,
+) -> dict[str, Any]:
+    target = parse_date(month) or date.today().replace(day=1)
+    ws_id = await resolve_workspace_id(session, ctx)
+    insights = await budget_insights_service.generate_insights(session, ws_id, ctx.user_id, month=target)
+    items = [i.model_dump() for i in insights]
+    return {"month": target.isoformat(), "insights": items, "total": len(items)}

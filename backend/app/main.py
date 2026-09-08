@@ -7,7 +7,11 @@ from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.accounts import router as accounts_router
+from app.api.budget_insights import router as budget_insights_router
 from app.api.budgets import router as budgets_router
+from app.api.expense_planning import router as expense_planning_router
+from app.api.monte_carlo import router as monte_carlo_router
+from app.api.guidance import router as guidance_router
 from app.api.goals import router as goals_router
 from app.api.groups import router as groups_router
 from app.api.categories import router as categories_router
@@ -30,6 +34,7 @@ from app.api.search import router as search_router
 from app.api.setup import router as setup_router
 from app.api.currencies import router as currencies_router
 from app.api.export import router as export_router
+from app.api.drive_backup import router as drive_backup_router
 from app.api.fx_rates import router as fx_rates_router
 from app.api.attachments import router as attachments_router
 from app.api.fiscal import router as fiscal_router
@@ -169,7 +174,11 @@ app.include_router(import_logs_router)
 app.include_router(accounts_router)
 app.include_router(connections_router)
 app.include_router(recurring_router)
+app.include_router(budget_insights_router)
 app.include_router(budgets_router)
+app.include_router(expense_planning_router)
+app.include_router(monte_carlo_router)
+app.include_router(guidance_router)
 app.include_router(goals_router)
 app.include_router(groups_router)
 app.include_router(assets_router)
@@ -182,6 +191,7 @@ app.include_router(setup_router)
 app.include_router(currencies_router)
 app.include_router(fx_rates_router)
 app.include_router(export_router)
+app.include_router(drive_backup_router)
 app.include_router(attachments_router)
 app.include_router(fiscal_router)
 app.include_router(payees_router)

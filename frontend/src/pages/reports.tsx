@@ -28,7 +28,7 @@ import { usePrivacyMode } from '@/hooks/use-privacy-mode'
 import { useAuth } from '@/contexts/auth-context'
 import { useCollectionFilter } from '@/contexts/collection-filter-context'
 import type { ReportResponse, CategoryTrendItem } from '@/types'
-import { formatCurrency } from '@/lib/format'
+import { formatCompactCurrency, formatCurrency } from '@/lib/format'
 
 // A small qualitative palette of well-separated hues for the composition
 // detail ring. Capped to a handful of slices, distinct colours make each
@@ -49,17 +49,6 @@ const SLICE_COLORS = [
   '#06B6D4', // cyan
 ]
 const OTHER_SLICE_COLOR = '#9CA3AF'
-
-function formatCompact(value: number, currency = 'USD', locale = 'en-US') {
-  return new Intl.NumberFormat(locale, {
-    style: 'currency',
-    currency,
-    notation: 'compact',
-    maximumFractionDigits: 1,
-  }).format(value)
-}
-
-
 
 // `days` (when set) asks for an exact rolling window ending today rather than
 // the month-aligned window `months` produces.
@@ -727,7 +716,7 @@ export default function ReportsPage() {
                       tickFormatter={(v) => {
                         if (privacyMode) return ''
                         if (v === 0) return '0'
-                        return formatCompact(v, userCurrency, locale)
+                        return formatCompactCurrency(v, userCurrency, locale)
                       }}
                       tick={{ fontSize: 10, fill: 'var(--muted-foreground)' }}
                       axisLine={false}
@@ -824,7 +813,7 @@ export default function ReportsPage() {
                   tickFormatter={(v) => {
                     if (privacyMode) return ''
                     if (v === 0) return '0'
-                    return formatCompact(v, userCurrency, locale)
+                    return formatCompactCurrency(v, userCurrency, locale)
                   }}
                   tick={{ fontSize: 10, fill: 'var(--muted-foreground)' }}
                   axisLine={false}
@@ -878,7 +867,7 @@ export default function ReportsPage() {
                   tickFormatter={(v) => {
                     if (privacyMode) return ''
                     if (v === 0) return '0'
-                    return formatCompact(v, userCurrency, locale)
+                    return formatCompactCurrency(v, userCurrency, locale)
                   }}
                   tick={{ fontSize: 10, fill: 'var(--muted-foreground)' }}
                   axisLine={false}
@@ -1075,7 +1064,7 @@ export default function ReportsPage() {
                                 : t(currentTab.labelKey)}
                           </span>
                           <span className="text-base font-bold text-foreground tabular-nums">
-                            {mask(formatCompact(
+                            {mask(formatCompactCurrency(
                               snapshotTrendPoint
                                 ? compositionView === 'netWorth' || compositionView === 'net' || !compositionView
                                   ? snapshotTrendPoint.value
@@ -1284,7 +1273,7 @@ export default function ReportsPage() {
                                 </span>
                               </div>
                               <p className="text-xs font-bold tabular-nums text-foreground mb-1">
-                                {mask(formatCompact(item.total, userCurrency, locale))}
+                                {mask(formatCompactCurrency(item.total, userCurrency, locale))}
                               </p>
                               <div style={{ height: 48 }}>
                                 <ResponsiveContainer width="100%" height="100%">
@@ -1355,7 +1344,7 @@ export default function ReportsPage() {
                     tickFormatter={(v) => {
                       if (privacyMode) return ''
                       if (v === 0) return '0'
-                      return formatCompact(v, userCurrency, locale)
+                      return formatCompactCurrency(v, userCurrency, locale)
                     }}
                     tick={{ fontSize: 10, fill: 'var(--muted-foreground)' }}
                     axisLine={false}

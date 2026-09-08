@@ -6,6 +6,7 @@ import {
   sankeyJustify,
 } from 'd3-sankey'
 import { usePrivacyMode } from '@/hooks/use-privacy-mode'
+import { formatCompactCurrency } from '@/lib/format'
 import type { ReportCompositionItem } from '@/types'
 
 // Colour carries MEANING, not category identity: green = money in, red = money
@@ -56,11 +57,11 @@ type Hover =
   | { kind: 'surplus' }
 
 function formatMoney(value: number, currency: string, locale: string, compact: boolean) {
+  if (compact) return formatCompactCurrency(value, currency, locale)
   return new Intl.NumberFormat(locale, {
     style: 'currency',
     currency,
-    notation: compact ? 'compact' : 'standard',
-    maximumFractionDigits: compact ? 1 : 0,
+    maximumFractionDigits: 0,
   }).format(value)
 }
 

@@ -52,6 +52,8 @@ _ASSET_TYPE_COLORS: dict[str, str] = {
     "real_estate": "#0EA5E9",
     "vehicle": "#14B8A6",
     "valuable": "#F59E0B",
+    "gold": "#EAB308",
+    "silver": "#94A3B8",
     "investment": "#8B5CF6",
     "other": "#6B7280",
 }

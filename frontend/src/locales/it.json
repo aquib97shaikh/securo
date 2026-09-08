@@ -126,7 +126,9 @@
     "groupAdmin": "Amministrazione",
     "groupAgents": "IA",
     "agents": "Agenti",
-    "aiAgents": "Agenti IA"
+    "aiAgents": "Agenti IA",
+    "planning": "Pianificazione",
+    "guidance": "Guidance"
   },
   "invoices": {
     "title": "Fatture",
@@ -698,9 +700,18 @@
       },
       "simplefin": {
         "description": "Banche statunitensi e internazionali tramite SimpleFIN Bridge"
+      },
+      "kite": {
+        "description": "Indian stocks and mutual funds via Kite Connect",
+        "connectTitle": "Connect Zerodha",
+        "connectDesc": "Log in with your Zerodha credentials to sync equity and mutual fund holdings."
       }
     },
-    "reconnected": "Banca riconnessa correttamente"
+    "reconnected": "Banca riconnessa correttamente",
+    "multiInstitutionLink": "{{provider}} · {{count}} institutions",
+    "connectProvider": "Connect provider",
+    "connectProviderDesc": "You will be redirected to sign in securely.",
+    "continueToLogin": "Continue to login"
   },
   "connections": {
     "settings": "Impostazioni connessione",
@@ -847,6 +858,9 @@
     "confirmDeleteTitle": "Eliminare la transazione ricorrente?",
     "generated": "{{count}} transazioni generate",
     "generatePending": "Genera in sospeso",
+    "backfill": "Recupera",
+    "backfillUntilToday": "Recupera fino a oggi",
+    "backfillUntilTodayHelp": "Crea una transazione per ogni scadenza dalla data di inizio fino a oggi. Le date successive aspettano la loro scadenza.",
     "autoGenerate": "Genera transazioni automaticamente",
     "autoGenerateHelp": "Crea una transazione ogni volta che questa spesa è in scadenza. Disattiva per attendere l'addebito reale (ad es. dalla sincronizzazione bancaria) e mostrarla solo come in arrivo fino ad allora.",
     "fxEstimate": "Stima basata sull'ultimo tasso di cambio ({{rate}}). L'importo finale può variare.",
@@ -1185,6 +1199,8 @@
     "typeStock": "Azione",
     "typeEtf": "ETF",
     "typeCrypto": "Cripto",
+    "typeGold": "Oro",
+    "typeSilver": "Argento",
     "typeFund": "Fondo",
     "typeOther": "Altro",
     "valuationMethod": "Metodo di valutazione",
@@ -1193,7 +1209,15 @@
     "marketPrice": "Prezzo di mercato",
     "ticker": "Ticker",
     "tickerPlaceholder": "es. AAPL, BTC-USD, PETR4.SA",
+    "metalTickerPlaceholder": "es. GOLD, SILVER",
     "quantity": "Quantità",
+    "weightGrams": "Peso (grammi)",
+    "metalWeightHint": "Inserisci i grammi. Le quotazioni GOLD e SILVER sono già al grammo nella valuta scelta.",
+    "metalPurchasePrice": "Prezzo di acquisto (al grammo)",
+    "metalPurchasePriceHint": "Lascia vuoto per usare il prezzo di mercato attuale.",
+    "karat": "Carati",
+    "karatHint": "24K è oro puro. 22K è il gioiello tipico. Il prezzo live è scalato per purezza.",
+    "metalCurrencyHint": "I prezzi live di oro e argento arrivano da GoldPriceZ nella valuta scelta, al grammo.",
     "marketPriceSource": "Quotazione in tempo reale",
     "marketPriceSourceTooltip": "Prezzo aggiornato automaticamente dai dati di mercato",
     "lastUpdated": "Aggiornato {{when}}",
@@ -1271,7 +1295,17 @@
     "total": "Totale",
     "confirmRegenerateTitle": "Rigenerare i valori?",
     "confirmRegenerate": "I parametri di crescita sono cambiati. Tutti i valori generati automaticamente saranno eliminati e ricalcolati. I valori manuali saranno mantenuti.",
-    "regenerate": "Rigenera"
+    "regenerate": "Rigenera",
+    "sessionExpired": "Session expired — reconnect to sync",
+    "connectionNeedsReconnect": "Connection error — reconnect to sync",
+    "syncStaleTitle": "Synced holdings may be out of date",
+    "syncStaleDescription": "Your broker connection needs a fresh login to update portfolio values.",
+    "reconnectInstitution": "Reconnect {{name}}",
+    "reconnectOnAccounts": "Reconnect on Accounts",
+    "connectZerodha": "Connect Zerodha",
+    "chartRange": "Time range",
+    "chartToggleSeries": "Toggle {{name}} in chart",
+    "rangeAll": "All"
   },
   "reports": {
     "section": "Analisi",
@@ -1376,6 +1410,9 @@
     "empty": "Ancora nessun beneficiario",
     "searchPlaceholder": "Cerca beneficiari...",
     "transactionCount": "Transazioni",
+    "net": "Netto",
+    "youOwe": "Devi",
+    "owedToYou": "Ti devono",
     "totalSpent": "Totale speso",
     "totalReceived": "Totale ricevuto",
     "lastTransaction": "Ultima transazione",
@@ -1629,7 +1666,8 @@
     "passwordPlaceholder": "Lascia vuoto per un backup non cifrato",
     "passwordTooShort": "Usa almeno {{min}} caratteri",
     "encryptionNote": "L'archivio è cifrato con AES-256 e si apre con qualsiasi programma di compressione. Securo non conserva questa password e non può recuperare il file senza di essa.",
-    "successEncrypted": "Backup cifrato scaricato con successo"
+    "successEncrypted": "Backup cifrato scaricato con successo",
+    "driveNote": "This will also update Google Drive (latest plus the last 3 dated copies for this workspace)."
   },
   "update": {
     "title": "Aggiornamento del server",
@@ -1702,6 +1740,8 @@
       "numberFormatDotCommaDesc": "Punto per le migliaia, virgola per i decimali",
       "numberFormatSpaceComma": "1 000,00",
       "numberFormatSpaceCommaDesc": "Spazio per le migliaia, virgola per i decimali",
+      "numberFormatIndian": "12,34,567.89",
+      "numberFormatIndianDesc": "Raggruppamento indiano, compatto in lakh/crore",
       "dateFormatTitle": "Formato data",
       "dateFormatDesc": "Come vengono visualizzate le date. I nomi dei mesi seguono sempre la lingua dell'app di ciascun utente.",
       "dateFormatAuto": "Automatico",
@@ -1712,7 +1752,30 @@
       "dateFormatMdyDesc": "Mese prima, es. 06/04/2026.",
       "dateFormatYmd": "Anno / Mese / Giorno",
       "dateFormatYmdDesc": "Ordine ISO, es. 2026-06-04.",
-      "updated": "Impostazione aggiornata"
+      "updated": "Impostazione aggiornata",
+      "driveBackupTitle": "Google Drive backup",
+      "driveBackupDesc": "Upload every workspace to Drive on a schedule, named after the workspace. Keeps a latest file plus the last 3 dated copies.",
+      "driveBackupUnavailable": "Set GOOGLE_DRIVE_CLIENT_ID and GOOGLE_DRIVE_CLIENT_SECRET on the server to enable Drive backup. Until then, Backup only downloads a zip.",
+      "driveBackupConnect": "Connect Google",
+      "driveBackupDisconnect": "Disconnect",
+      "driveBackupConnecting": "Connecting Google Drive…",
+      "driveBackupConnected": "Google Drive connected",
+      "driveBackupConnectedAs": "Connected as {{email}}",
+      "driveBackupNotConnected": "Not connected",
+      "driveBackupFolder": "Folder: {{folder}}",
+      "driveBackupSchedule": "Schedule",
+      "driveBackupDaily": "Daily",
+      "driveBackupWeekly": "Weekly",
+      "driveBackupPassword": "Drive zip password (optional)",
+      "driveBackupPasswordPlaceholder": "Leave empty for an unencrypted Drive copy",
+      "driveBackupPasswordSet": "Password is set — enter a new one to change it",
+      "driveBackupClearPassword": "Remove Drive password",
+      "driveBackupLastRunNever": "No Drive upload yet",
+      "driveBackupLastRunOk": "Last upload succeeded {{when}}",
+      "driveBackupLastRunFailed": "Last upload failed {{when}}: {{error}}",
+      "driveBackupSaved": "Drive backup settings saved",
+      "driveBackupDisconnected": "Google Drive disconnected",
+      "driveBackupConnectError": "Could not connect Google Drive"
     }
   },
   "onboarding": {
@@ -1956,12 +2019,38 @@
         "token": "Token",
         "url": "Endpoint MCP",
         "curl": "Esempio curl",
-        "clientConfig": "Integrazione client"
+        "clientConfig": "Integrazione client",
+        "claudeDesktopHint": "Claude Desktop accetta solo server stdio. Questo snippet usa npx mcp-remote come ponte locale. Chiudi Claude del tutto (barra di sistema) e riaprilo."
       },
       "clients": {
         "claude": "Claude Desktop / Code / Cursor",
+        "claudeDesktop": "Claude Desktop",
+        "cursor": "Cursor / Claude Code",
         "openai": "OpenAI Responses API"
       }
     }
+  },
+  "guidance": {
+    "title": "Financial Guidance",
+    "subtitle": "Ranked evidence-backed recommendations for this week & month",
+    "activeGuidance": "Active Guidance",
+    "adviceTimeline": "Advice Timeline",
+    "onThisPage": "On this page",
+    "allInsights": "All insights",
+    "urgentNow": "Urgent now",
+    "needsAttention": "Needs attention",
+    "watchList": "Watch list",
+    "improveOverTime": "Improve over time",
+    "noInsights": "All clear here!",
+    "noInsightsDesc": "No active warnings or improvements needed for this view.",
+    "takeAction": "Take action",
+    "why": "Why?",
+    "snooze7": "Snooze for 7 days",
+    "snooze30": "Snooze for 30 days",
+    "dismiss": "Dismiss permanently",
+    "helpful": "Helpful",
+    "openInbox": "Open Guidance Inbox",
+    "cashflowForecast": "Upcoming 14-Day Cash Flow Forecast",
+    "monthAtRisk": "This Month at Risk"
   }
 }

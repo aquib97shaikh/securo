@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useDisplayLocale } from '@/hooks/use-display-locale'
 import { monthLabel } from '@/lib/month-utils'
@@ -30,6 +30,7 @@ import { useWorkspace } from '@/contexts/workspace-context'
 import { resolveDateFnsLocale } from '@/lib/date-fns-locale'
 import { findCategoryReference } from '@/lib/category-reference-utils'
 import { formatCurrency } from '@/lib/format'
+import { BudgetInsightCard } from '@/components/budget-insight-card'
 
 function currentMonth() {
   const now = new Date()
@@ -74,6 +75,30 @@ export default function BudgetsPage() {
     queryKey: ['budgets', selectedMonth],
     queryFn: () => budgetsApi.list(monthParam),
   })
+
+  const { data: insightsList } = useQuery({
+    queryKey: ['budget-insights', selectedMonth],
+    queryFn: () => budgetsApi.insights(monthParam),
+  })
+
+  // Dismissed insights persist per-month in localStorage
+  const dismissKey = `dismissed_insights_${selectedMonth}`
+  const [dismissed, setDismissed] = useState<Set<string>>(() => {
+    try {
+      const stored = localStorage.getItem(dismissKey)
+      return stored ? new Set(JSON.parse(stored)) : new Set()
+    } catch { return new Set() }
+  })
+  const dismissInsight = useCallback((id: string) => {
+    setDismissed(prev => {
+      const next = new Set(prev)
+      next.add(id)
+      localStorage.setItem(dismissKey, JSON.stringify([...next]))
+      return next
+    })
+  }, [dismissKey])
+  const visibleInsights = insightsList?.filter(i => !dismissed.has(i.id)) ?? []
+
 
   const { data: categoriesList } = useQuery({
     queryKey: ['categories'],
@@ -191,6 +216,23 @@ export default function BudgetsPage() {
           </div>
         }
       />
+
+      {visibleInsights.length > 0 && (
+        <div className="mb-6">
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+            Budget Insights & Guidance
+          </p>
+          <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-thin">
+            {visibleInsights.map(insight => (
+              <BudgetInsightCard
+                key={insight.id}
+                insight={insight}
+                onDismiss={dismissInsight}
+              />
+            ))}
+          </div>
+        </div>
+      )}
 
       <SectionCard>
         <SectionHeader

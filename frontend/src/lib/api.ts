@@ -7,6 +7,7 @@ import type {
   Passkey,
   PasskeyOptionsResponse,
   AppSetting,
+  DriveBackupStatus,
   Category,
   CategoryRuleUsage,
   CategoryGroup,
@@ -24,6 +25,13 @@ import type {
   TransactionCalendarResponse,
   Budget,
   BudgetVsActual,
+  BudgetInsight,
+  ExpensePlan,
+  MonteCarloRequest,
+  MonteCarloResult,
+  GuidanceResponse,
+  GuidanceFeedbackPayload,
+  GuidanceHistoryItem,
   Rule,
   RuleAction,
   RuleConditionNode,
@@ -1002,6 +1010,10 @@ export const recurring = {
     const { data } = await api.post('/recurring-transactions/generate')
     return data
   },
+  backfill: async (id: string): Promise<{ generated: number }> => {
+    const { data } = await api.post(`/recurring-transactions/${id}/backfill`)
+    return data
+  },
 }
 
 // Budgets
@@ -1023,6 +1035,58 @@ export const budgets = {
   },
   comparison: async (month?: string): Promise<BudgetVsActual[]> => {
     const { data } = await api.get('/budgets/comparison', { params: { month } })
+    return data
+  },
+  insights: async (month?: string): Promise<BudgetInsight[]> => {
+    const { data } = await api.get('/budgets/insights', { params: { month } })
+    return data
+  },
+}
+
+// Planning
+export const planning = {
+  getExpensePlan: async (options?: {
+    months?: number
+    account_id?: string
+    forecast_mode?: 'all' | 'recurring_only' | 'budget_only'
+    safety_buffer?: number
+  } | number): Promise<ExpensePlan> => {
+    const params = typeof options === 'number' ? { months: options } : options
+    const { data } = await api.get('/planning/expenses', { params })
+    return data
+  },
+  runMonteCarlo: async (req: MonteCarloRequest): Promise<MonteCarloResult> => {
+    const { data } = await api.post('/planning/monte-carlo', req)
+    return data
+  },
+  getMonteCarloDefaultConfig: async (): Promise<MonteCarloRequest> => {
+    const { data } = await api.get('/planning/monte-carlo/default-config')
+    return data
+  },
+}
+
+// Guidance
+export const guidance = {
+  getGuidance: async (params?: {
+    month?: string
+    context?: string
+    min_score?: number
+    limit?: number
+    safety_buffer?: number
+  }): Promise<GuidanceResponse> => {
+    const { data } = await api.get('/guidance', { params })
+    return data
+  },
+  submitFeedback: async (insightId: string, payload: GuidanceFeedbackPayload): Promise<GuidanceHistoryItem> => {
+    const { data } = await api.post(`/guidance/${insightId}/feedback`, payload)
+    return data
+  },
+  getHistory: async (): Promise<GuidanceHistoryItem[]> => {
+    const { data } = await api.get('/guidance/history')
+    return data
+  },
+  applyAction: async (insightId: string, payload: Record<string, any>): Promise<any> => {
+    const { data } = await api.post(`/guidance/${insightId}/action`, payload)
     return data
   },
 }
@@ -1142,8 +1206,8 @@ export const assets = {
     const { data } = await api.get('/assets/market/search', { params: { q, limit } })
     return data
   },
-  marketQuote: async (symbol: string): Promise<MarketSymbolQuote> => {
-    const { data } = await api.get('/assets/market/quote', { params: { symbol } })
+  marketQuote: async (symbol: string, currency?: string): Promise<MarketSymbolQuote> => {
+    const { data } = await api.get('/assets/market/quote', { params: { symbol, currency } })
     return data
   },
   refreshPrice: async (id: string): Promise<Asset> => {
@@ -1346,6 +1410,10 @@ export const backup = {
     document.body.removeChild(a)
     URL.revokeObjectURL(url)
   },
+  driveStatus: async (): Promise<{ connected: boolean }> => {
+    const { data } = await api.get('/export/drive-status')
+    return data
+  },
 }
 
 // Admin
@@ -1395,6 +1463,30 @@ export const admin = {
   },
   defaultColors: async (): Promise<{ light: string | null; dark: string | null }> => {
     const { data } = await api.get('/admin/default-colors')
+    return data
+  },
+  getDriveBackup: async (): Promise<DriveBackupStatus> => {
+    const { data } = await api.get('/admin/drive-backup')
+    return data
+  },
+  updateDriveBackup: async (body: {
+    schedule?: 'daily' | 'weekly'
+    password?: string
+    clear_password?: boolean
+  }): Promise<DriveBackupStatus> => {
+    const { data } = await api.patch('/admin/drive-backup', body)
+    return data
+  },
+  getDriveBackupOAuthUrl: async (): Promise<{ url: string }> => {
+    const { data } = await api.get('/admin/drive-backup/oauth-url')
+    return data
+  },
+  completeDriveBackupOAuth: async (code: string, state: string): Promise<DriveBackupStatus> => {
+    const { data } = await api.post('/admin/drive-backup/oauth/callback', { code, state })
+    return data
+  },
+  disconnectDriveBackup: async (): Promise<DriveBackupStatus> => {
+    const { data } = await api.post('/admin/drive-backup/disconnect')
     return data
   },
 }

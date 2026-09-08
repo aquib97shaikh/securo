@@ -41,6 +41,11 @@ class Settings(BaseSettings):
     enable_banking_api_url: str = "https://api.enablebanking.com"
     enable_banking_oauth_redirect_uri: str = ""  # empty derives from FRONTEND_URL
 
+    # Zerodha Kite Connect (Indian equity + mutual fund holdings).
+    kite_api_key: str = ""
+    kite_api_secret: SecretStr = SecretStr("")
+    kite_oauth_redirect_uri: str = ""  # empty derives from FRONTEND_URL
+
     # SimpleFIN Bridge (US/intl banks, paste-a-token flow). Off by default.
     # The bridge URL defaults to the beta/sandbox host so users can test with
     # the demo token; flip to https://bridge.simplefin.org for production.
@@ -120,6 +125,18 @@ class Settings(BaseSettings):
     # Set TESOURO_DIRETO_ENABLED=false to fully disable (e.g. to avoid the
     # external dependency on the Brazilian government endpoint).
     tesouro_direto_enabled: bool = True
+
+    # GoldPriceZ live gold/silver (per gram, multi-currency). Empty disables
+    # GOLD/SILVER spot symbols and leaves Yahoo futures (GC=F / SI=F) as the
+    # fallback if the user types those tickers themselves.
+    goldpricez_api_key: SecretStr = SecretStr("")
+
+    # Google Drive workspace backups. Empty client id/secret hides the admin
+    # card and leaves Backup as a local download.
+    google_drive_client_id: str = ""
+    google_drive_client_secret: SecretStr = SecretStr("")
+    # Empty derives {FRONTEND_URL}/admin/drive-backup/callback
+    google_drive_oauth_redirect_uri: str = ""
 
     @property
     def oidc_login_available(self) -> bool:

@@ -19,12 +19,14 @@ from app.models.fx_rate import FxRate
 from app.models.transaction_attachment import TransactionAttachment
 from app.models.payee import Payee, PayeeMapping, PayeeTaxId
 from app.models.app_settings import AppSetting
+from app.models.drive_backup import DriveBackupConfig
 from app.models.goal import Goal
 from app.models.credit_card_bill import CreditCardBill
 from app.models.group import Group, GroupMember
 from app.models.transaction_split import TransactionSplit
 from app.models.group_settlement import GroupSettlement
 from app.models.collection import Collection, collection_accounts, collection_asset_groups
+from app.models.guidance import GuidanceFeedback
 
 # Side-effect import: register the before_insert listener that auto-stamps
 # workspace_id from user_id on financial entities. Imported last so all
@@ -56,6 +58,7 @@ __all__ = [
     "PayeeMapping",
     "PayeeTaxId",
     "AppSetting",
+    "DriveBackupConfig",
     "Goal",
     "CreditCardBill",
     "Group",
@@ -65,4 +68,5 @@ __all__ = [
     "Collection",
     "collection_accounts",
     "collection_asset_groups",
+    "GuidanceFeedback",
 ]

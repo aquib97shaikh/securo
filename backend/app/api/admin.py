@@ -137,7 +137,7 @@ async def update_setting(
         "registration_enabled": {"true", "false"},
         "credit_card_accounting_mode": {"cash", "accrual"},
         "use_provider_categories": {"true", "false"},
-        "number_format": {"auto", "comma_dot", "dot_comma", "space_comma"},
+        "number_format": {"auto", "comma_dot", "dot_comma", "space_comma", "indian"},
         "date_format": {"auto", "dmy", "mdy", "ymd"},
     }
 

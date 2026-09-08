@@ -36,12 +36,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { AlertTriangle, Archive, Plus, Save, Trash2, Users } from 'lucide-react'
+import { Switch } from '@/components/ui/switch'
+import { AlertTriangle, Archive, CalendarRange, Plus, Save, Sparkles, Trash2, Users } from 'lucide-react'
 import { WORKSPACE_KIND_LABEL_KEY } from '@/lib/workspace-kinds'
 import { SUPPORTED_LANGS } from '@/lib/i18n'
 import { countryFlag } from '@/lib/country-flag'
 import { countryName } from '@/lib/country-name'
-import type { WorkspaceKind, WorkspaceMember, WorkspaceRole } from '@/types'
+import type { UserPreferences, WorkspaceKind, WorkspaceMember, WorkspaceRole } from '@/types'
 
 function labelForRole(role: WorkspaceRole, t: (key: string) => string): string {
   return {
@@ -260,6 +261,28 @@ export default function WorkspaceSettingsPage() {
       toast.error(detail)
     },
   })
+
+  const handleTogglePreference = async (
+    feature: keyof UserPreferences,
+    enabled: boolean,
+    label?: string,
+  ) => {
+    try {
+      const prefs = {
+        ...(currentUser?.preferences || {}),
+        [feature]: enabled,
+      }
+      const updated = await authApi.updateMe({ preferences: prefs })
+      updateUser(updated)
+      toast.success(
+        label
+          ? `${label} ${enabled ? 'enabled' : 'disabled'}`
+          : 'Setting updated'
+      )
+    } catch {
+      toast.error('Failed to update feature setting')
+    }
+  }
 
   if (!current) {
     return (
@@ -564,6 +587,177 @@ export default function WorkspaceSettingsPage() {
             })}
           </ul>
         )}
+      </section>
+
+      {/* Optional Features & Guidance Modules */}
+      <section className="space-y-4 rounded-xl border bg-card p-6">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Sparkles className="h-4 w-4 text-primary" />
+            <h2 className="text-base font-semibold">
+              {t('workspace.optionalFeatures', 'Optional Features & Sub-Features')}
+            </h2>
+          </div>
+          <span className="text-xs text-muted-foreground hidden sm:inline">Modular toggles</span>
+        </div>
+        <p className="text-xs text-muted-foreground -mt-2">
+          {t(
+            'workspace.optionalFeaturesDesc',
+            'Fine-tune which modules and internal sub-features are active to keep your interface fast, focused, and clean.'
+          )}
+        </p>
+
+        <div className="divide-y divide-border/60">
+          {/* Module 1: Guidance */}
+          <div className="py-3.5 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5 pr-4">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="h-4 w-4 text-primary" />
+                  <Label htmlFor="toggle-guidance" className="text-sm font-semibold cursor-pointer">
+                    Financial Guidance Engine
+                  </Label>
+                  <Badge variant="outline" className="text-[10px] font-normal">
+                    {currentUser?.preferences?.guidance_enabled ? 'Active' : 'Turned off'}
+                  </Badge>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Automated telemetry, budget pacing analysis, and evidence-backed recommendations.
+                </p>
+              </div>
+              <Switch
+                id="toggle-guidance"
+                checked={Boolean(currentUser?.preferences?.guidance_enabled)}
+                onCheckedChange={(checked) => handleTogglePreference('guidance_enabled', checked, 'Financial Guidance')}
+              />
+            </div>
+
+            {/* Guidance Internal Sub-features */}
+            {currentUser?.preferences?.guidance_enabled && (
+              <div className="ml-5 pl-3 border-l-2 border-border/80 space-y-3 pt-1 animate-in fade-in-50 duration-150">
+                <div className="flex items-center justify-between py-1">
+                  <div className="space-y-0.5 pr-4">
+                    <Label htmlFor="toggle-guidance-copilot" className="text-xs font-medium cursor-pointer">
+                      Right Info Panel Insights
+                    </Label>
+                    <p className="text-[11px] text-muted-foreground">
+                      Display proactive smart advice and observation cards inside the right slide-over information panel.
+                    </p>
+                  </div>
+                  <Switch
+                    id="toggle-guidance-copilot"
+                    checked={currentUser?.preferences?.guidance_copilot_panel !== false}
+                    onCheckedChange={(checked) =>
+                      handleTogglePreference('guidance_copilot_panel', checked, 'Side panel insights')
+                    }
+                  />
+                </div>
+
+                <div className="flex items-center justify-between py-1">
+                  <div className="space-y-0.5 pr-4">
+                    <Label htmlFor="toggle-guidance-actions" className="text-xs font-medium cursor-pointer">
+                      1-Click Remedial Actions
+                    </Label>
+                    <p className="text-[11px] text-muted-foreground">
+                      Show one-click execution buttons on advice cards to automatically resolve overspends or reallocate caps.
+                    </p>
+                  </div>
+                  <Switch
+                    id="toggle-guidance-actions"
+                    checked={currentUser?.preferences?.guidance_auto_actions !== false}
+                    onCheckedChange={(checked) =>
+                      handleTogglePreference('guidance_auto_actions', checked, '1-Click auto remedies')
+                    }
+                  />
+                </div>
+
+                <div className="flex items-center justify-between py-1">
+                  <div className="space-y-0.5 pr-4">
+                    <Label htmlFor="toggle-guidance-widgets" className="text-xs font-medium cursor-pointer">
+                      Dashboard Forecast Highlights
+                    </Label>
+                    <p className="text-[11px] text-muted-foreground">
+                      Render compact month-end risk indicators on the main dashboard overview.
+                    </p>
+                  </div>
+                  <Switch
+                    id="toggle-guidance-widgets"
+                    checked={Boolean(currentUser?.preferences?.guidance_dashboard_widgets)}
+                    onCheckedChange={(checked) =>
+                      handleTogglePreference('guidance_dashboard_widgets', checked, 'Dashboard forecast highlights')
+                    }
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Module 2: Planning */}
+          <div className="py-3.5 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5 pr-4">
+                <div className="flex items-center gap-2">
+                  <CalendarRange className="h-4 w-4 text-primary" />
+                  <Label htmlFor="toggle-planning" className="text-sm font-semibold cursor-pointer">
+                    Cash-Flow & Expense Planning
+                  </Label>
+                  <Badge variant="outline" className="text-[10px] font-normal">
+                    {currentUser?.preferences?.planning_enabled ? 'Active' : 'Turned off'}
+                  </Badge>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Balance runway forecasting, shortfall warnings, and probabilistic Monte Carlo simulations.
+                </p>
+              </div>
+              <Switch
+                id="toggle-planning"
+                checked={Boolean(currentUser?.preferences?.planning_enabled)}
+                onCheckedChange={(checked) => handleTogglePreference('planning_enabled', checked, 'Cash-Flow Planning')}
+              />
+            </div>
+
+            {/* Planning Internal Sub-features */}
+            {currentUser?.preferences?.planning_enabled && (
+              <div className="ml-5 pl-3 border-l-2 border-border/80 space-y-3 pt-1 animate-in fade-in-50 duration-150">
+                <div className="flex items-center justify-between py-1">
+                  <div className="space-y-0.5 pr-4">
+                    <Label htmlFor="toggle-planning-forecast" className="text-xs font-medium cursor-pointer">
+                      Runway & Balance Projections
+                    </Label>
+                    <p className="text-[11px] text-muted-foreground">
+                      Forecast balance trajectories forward using confirmed recurring bills and active budget caps.
+                    </p>
+                  </div>
+                  <Switch
+                    id="toggle-planning-forecast"
+                    checked={currentUser?.preferences?.planning_cashflow_forecast !== false}
+                    onCheckedChange={(checked) =>
+                      handleTogglePreference('planning_cashflow_forecast', checked, 'Runway projections')
+                    }
+                  />
+                </div>
+
+                <div className="flex items-center justify-between py-1">
+                  <div className="space-y-0.5 pr-4">
+                    <Label htmlFor="toggle-planning-montecarlo" className="text-xs font-medium cursor-pointer">
+                      Monte Carlo Scenario Simulations
+                    </Label>
+                    <p className="text-[11px] text-muted-foreground">
+                      Run probabilistic multi-run analysis for worst-case, expected, and best-case savings runway.
+                    </p>
+                  </div>
+                  <Switch
+                    id="toggle-planning-montecarlo"
+                    checked={currentUser?.preferences?.planning_monte_carlo !== false}
+                    onCheckedChange={(checked) =>
+                      handleTogglePreference('planning_monte_carlo', checked, 'Monte Carlo simulations')
+                    }
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
       </section>
 
       {/* Danger zone — owners only */}
